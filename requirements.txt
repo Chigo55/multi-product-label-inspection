@@ -1,0 +1,32 @@
+# ============================================================
+# multi-product-label-inspection / requirements (v0.1, Week 1)
+# ============================================================
+# 설치:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# PyTorch는 하드웨어(CUDA 버전)에 따라 설치 방법이 달라지므로
+# 이 파일에 고정하지 않는다. https://pytorch.org/get-started/locally/ 참고.
+#   CPU:  pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   CUDA: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# --- 실험 추적 / 설정 ---
+mlflow>=2.16
+PyYAML>=6.0
+
+# --- 수치 / 평가 ---
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.5
+matplotlib>=3.8
+
+# --- 이미지 ---
+Pillow>=10.3
+# opencv-python-headless>=4.10      # Week 2~: registration / template matching
+
+# --- Week 2 이후 단계에서 활성화 ---
+# torch, torchvision                # 전 모델 공통
+# anomalib>=1.1                     # PatchCore / EfficientAD baseline
+# timm>=1.0                         # DINOv2 등 backbone
+# faiss-cpu>=1.8                    # prototype / embedding retrieval
+# paddleocr, paddlepaddle           # OCR (Week 5+)
+# pyzbar 또는 opencv WeChatQRCode   # Barcode / QR / DataMatrix (Week 5+)

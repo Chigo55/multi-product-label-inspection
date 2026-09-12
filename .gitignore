@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Experiment tracking
+mlruns/
+mlflow.db
+mlartifacts/
+outputs/
+*.log
+
+# Data (원본 데이터는 절대 커밋하지 않는다)
+datasets/public/*
+datasets/custom/*
+!datasets/public/.gitkeep
+!datasets/custom/.gitkeep
+!datasets/**/*.md
+
+# Model weights / large artifacts
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.npy
+*.npz
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
