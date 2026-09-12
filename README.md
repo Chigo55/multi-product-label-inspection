@@ -138,11 +138,12 @@ python3 -m venv .venv
 .venv/bin/python experiments/week01_mlflow_hello.py
 
 # MLflow UI (http://127.0.0.1:5000)
-.venv/bin/mlflow ui --backend-store-uri ./mlruns
+.venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
 ```
 
-> Week 1에서는 로컬 파일 기반 MLflow(`./mlruns`)만 사용한다.
-> Docker/DB 기반 MLflow Server는 필요해질 때(다중 머신 사용 시점) 도입한다.
+> Week 1에서는 **로컬 SQLite MLflow**(`mlflow.db` + `mlartifacts/`)만 사용한다. 서버도 Docker도 필요 없다.
+> (MLflow 3.x부터 파일 기반 store `./mlruns`는 maintenance mode라 예외를 던진다.)
+> 다중 머신을 쓰게 되는 시점에 MLflow Server 도입을 검토한다.
 
 ---
 
