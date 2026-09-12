@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.1
+# Evaluation Protocol v0.2
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -90,10 +90,25 @@ positive = defect 기준.
 | Level | 단위 | 집계 규칙 |
 |---|---|---|
 | **Level 1 — Defect-level** | 개별 결함 | localization 포함 (mask/bbox subset에 한함) |
-| **Level 2 — Label-level** | 라벨 1개 | 해당 라벨의 모든 검사 항목 중 최악값 |
-| **Level 3 — Product-level** | 제품 1개 | 라벨 중 **하나라도 CRITICAL NG면 Product NG**. 하나라도 REVIEW면 Product REVIEW |
+| **Level 2 — Label-level** | 라벨 1개 (`unit_id`, `label_slot`) | 해당 라벨의 모든 검사 항목 중 최악값 |
+| **Level 3 — Product-level** | Product Unit 1개 (`unit_id`) | 아래 집계 규칙 |
+
+### Product-level 집계 규칙
+
+```text
+라벨 중 하나라도 NG      → Product NG        (severity 무관)
+NG 없고 하나라도 REVIEW  → Product REVIEW
+전부 OK                  → Product OK
+```
+
+**NG가 REVIEW보다 우선한다.** 한 제품에 NG 라벨과 REVIEW 라벨이 함께 있으면 Product NG다.
+
+`CRITICAL`만 Product NG로 보는 안은 택하지 않았다 — 그러면 찢어진 라벨(`MAJOR`)이 붙은 제품이
+Product-level에서 정상으로 집계된다. `CRITICAL`은 Critical Defect Escape Rate로 이미 별도
+추적하므로 중복이 아니다. (`docs/adr/0003`)
 
 > Product-level이 현장 KPI와 직결된다. Label-level 성능이 좋아도 제품당 라벨이 많으면 Product-level FPR이 급격히 악화된다 — 반드시 함께 본다.
+> 집계에는 `unit_id`가 필요하다. Dataset Schema v0.2에서 추가됐다.
 
 ### 부가 지표
 
@@ -217,3 +232,4 @@ Camera acquisition
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | v0.1 | 2026-09-12 | Primary metric(DER/CDER) 확정, REVIEW 집계 규칙, 3-level, CI 보고 규칙, latency 정의 |
+| v0.2 | 2026-09-12 | Product-level 집계 규칙 확정(severity 무관 NG 우선), 집계 키를 `unit_id`/`label_slot`으로 명시 |

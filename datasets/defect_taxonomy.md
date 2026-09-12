@@ -1,7 +1,7 @@
-# Defect Taxonomy v0.1
+# Defect Taxonomy v0.1.1
 
 > 작성일: 2026-09-12 (Week 1)
-> 상태: **v0.1 — 변경 가능**
+> 상태: **v0.1.1 — 변경 가능**
 > 이 파일의 enum 값이 `schema.md`의 `defect_type` / `defect_severity`의 유일한 정의다.
 
 불량은 두 축으로 나눈다. 두 질문이 분리되기 때문이다.
@@ -13,9 +13,12 @@
 
 ---
 
-## 1. VISUAL / STRUCTURAL (`defect_category = "visual"`)
+## 1. VISUAL (`defect_category = "visual"`)
 
 라벨 자체의 외관이 정상과 다른 경우. 주로 Industrial Anomaly Detection으로 다룬다.
+
+> 정본 용어는 **Visual Defect**다. MVTec LOCO의 `structural_anomalies`는 이 축으로 매핑되지만,
+> 문서와 코드에서는 `structural`이 아니라 `visual`로 쓴다 (`CONTEXT.md`).
 
 | `defect_type` | 설명 | 기본 Severity |
 |---|---|---|
@@ -98,3 +101,4 @@
 | 버전 | 날짜 | 내용 |
 |---|---|---|
 | v0.1 | 2026-09-12 | VISUAL 9종 + LOGICAL 8종, Severity 3단계, 모듈 매핑 초안 |
+| v0.1.1 | 2026-09-12 | 정본 용어를 `visual`로 통일(`structural` 병기 제거) |

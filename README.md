@@ -95,12 +95,13 @@ Evaluation:
 ```text
 multi-product-label-inspection/
 ├─ README.md                  ← 연구 목표 / KPI (이 문서)
+├─ CONTEXT.md                 ← 용어집 (도메인 언어의 정본)
 ├─ pyproject.toml             ← 의존성 / 도구 설정 (uv)
 ├─ uv.lock                    ← 재현용 lockfile (반드시 커밋)
 ├─ configs/                   ← 실험 설정 (YAML). base.yaml을 복제해서 사용
 ├─ datasets/
-│  ├─ schema.md               ← Dataset Schema v0.1
-│  ├─ defect_taxonomy.md      ← Defect Taxonomy + Severity v0.1
+│  ├─ schema.md               ← Dataset Schema v0.2
+│  ├─ defect_taxonomy.md      ← Defect Taxonomy + Severity v0.1.1
 │  ├─ public/                 ← MVTec AD / LOCO / VisA ... (git에 커밋하지 않음)
 │  └─ custom/                 ← 자체 Multi-Product Multi-Label benchmark
 ├─ src/
@@ -118,7 +119,9 @@ multi-product-label-inspection/
 │  ├─ weekly/                 ← 주간 연구노트 (WeekNN.md)
 │  └─ figures/
 ├─ tests/
-└─ docs/                      ← 연구 기준 문서
+└─ docs/
+   ├─ adr/                    ← 되돌리기 어려운 결정 기록
+   └─ ...                     ← 연구 기준 문서
 ```
 
 **운영 규칙**
