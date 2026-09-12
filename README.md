@@ -95,7 +95,8 @@ Evaluation:
 ```text
 multi-product-label-inspection/
 ├─ README.md                  ← 연구 목표 / KPI (이 문서)
-├─ requirements.txt
+├─ pyproject.toml             ← 의존성 / 도구 설정 (uv)
+├─ uv.lock                    ← 재현용 lockfile (반드시 커밋)
 ├─ configs/                   ← 실험 설정 (YAML). base.yaml을 복제해서 사용
 ├─ datasets/
 │  ├─ schema.md               ← Dataset Schema v0.1
@@ -131,14 +132,13 @@ multi-product-label-inspection/
 ## Quick start
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+uv sync
 
 # MLflow 동작 확인 (Week 1)
-.venv/bin/python experiments/week01_mlflow_hello.py
+uv run experiments/week01_mlflow_hello.py
 
 # MLflow UI (http://127.0.0.1:5000)
-.venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
 ```
 
 > Week 1에서는 **로컬 SQLite MLflow**(`mlflow.db` + `mlartifacts/`)만 사용한다. 서버도 Docker도 필요 없다.

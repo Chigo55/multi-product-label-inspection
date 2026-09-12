@@ -6,8 +6,8 @@
     config 로드 → run 시작 → param 기록 → metric 기록 → artifact 저장 → UI 확인
 
 실행:
-    .venv/bin/python experiments/week01_mlflow_hello.py
-    .venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
+    uv run experiments/week01_mlflow_hello.py
+    uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
 
 주의: MLflow 3.x부터 파일 기반 tracking store(./mlruns)는 maintenance mode다.
 로컬 SQLite(mlflow.db)를 쓰면 서버/Docker 없이도 최신 기능을 그대로 쓸 수 있다.
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import mlflow
@@ -35,7 +35,10 @@ def git_commit() -> str:
     try:
         out = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return out.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -46,7 +49,10 @@ def git_is_dirty() -> bool:
     try:
         out = subprocess.run(
             ["git", "status", "--porcelain"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return bool(out.stdout.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -66,8 +72,8 @@ def main() -> None:
         # --- params: 무엇을, 어떤 코드로, 어떤 데이터로 돌렸는가 ---
         mlflow.log_params(
             {
-                "model": config["model"]["name"],            # none
-                "dataset": config["dataset"]["name"],        # pilot
+                "model": config["model"]["name"],  # none
+                "dataset": config["dataset"]["name"],  # pilot
                 "dataset_version": config["dataset"]["version"],
                 "split": config["dataset"]["split"],
                 "seed": config["experiment"]["seed"],
@@ -85,7 +91,7 @@ def main() -> None:
 
         summary = {
             "purpose": "Week 1 MLflow plumbing check",
-            "logged_at": datetime.now(timezone.utc).isoformat(),
+            "logged_at": datetime.now(UTC).isoformat(),
             "note": "실제 지표 아님. 기록 경로 동작 확인용 더미 run.",
             "next": "Week 4에서 evaluation pipeline을 붙인다.",
         }
@@ -101,7 +107,9 @@ def main() -> None:
         print(f"  tracking   : {TRACKING_URI}")
         print()
         print("UI 확인:")
-        print("  .venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts")
+        print(
+            "  uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts"
+        )
         print("  http://127.0.0.1:5000")
 
 

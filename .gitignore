@@ -29,6 +29,12 @@ datasets/custom/*
 *.npy
 *.npz
 
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+.pyrefly_cache/
+.mypy_cache/
+
 # OS / editor
 .DS_Store
 .vscode/
