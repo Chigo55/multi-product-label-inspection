@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.2
+# Evaluation Protocol v0.3
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -24,6 +24,17 @@ REVIEW  : 판정 보류 → 사람이 확인
 
 > **중요**: 모든 지표는 반드시 `REVIEW` 처리 방식을 명시해서 보고한다.
 > 2-state 비교(AUROC 등)가 필요할 때는 `REVIEW`를 NG로 합친 값도 함께 적는다.
+
+지표별 `REVIEW` 처리 (코드 정본: `src/evaluation/metrics.py`):
+
+| 지표 | `REVIEW` 처리 |
+|---|---|
+| DER / CDER / FPR | 3-state 그대로. `REVIEW`는 escape도 false reject도 아니다 |
+| Precision / Recall / F1 | 2-state. **`REVIEW`를 NG로 합친다.** 따라서 Recall = 1 − DER |
+| Review Rate | 전체 중 `REVIEW` 비율 |
+| AUROC / AUPRC | threshold-free. score만 쓴다 |
+
+Confusion matrix는 **실제(normal/defect) × 판정(OK/REVIEW/NG)의 2×3**으로 보고한다.
 
 ---
 
@@ -136,8 +147,8 @@ Observed CDER:
 0.31%
 ```
 
-- 이항 비율 신뢰구간은 **Clopper-Pearson(exact)** 을 기본으로 한다.
-- escape가 0건인 경우 상한은 대략 `3/n` (rule of three)이다. → **"0 escape"는 n이 작으면 아무것도 증명하지 않는다.**
+- 이항 비율 신뢰구간은 **Clopper-Pearson(exact) 양측 95%** 를 기본으로 한다. 분모가 0이면 지표는 정의되지 않는다(`null`).
+- escape가 0건인 경우 상한은 `1 − 0.025^(1/n)` ≈ `3.7/n`이다 (rule of three `3/n`은 단측 95%라 쓰지 않는다). → **"0 escape"는 n이 작으면 아무것도 증명하지 않는다.**
 - 랜덤성이 있는 실험(few-shot 샘플링 등)은 **최소 3 seed**, 평균 ± 표준편차로 보고한다.
 
 ---
@@ -147,6 +158,7 @@ Observed CDER:
 - threshold는 **test set으로 정하지 않는다.** 반드시 `val`(또는 calibration split)에서 결정한다.
 - 기본 결정 규칙(잠정): **FPR 상한을 고정하고 그 조건에서 DER 최소화**, 또는 그 반대. 실험마다 규칙을 명시한다.
 - `REVIEW` 구간은 두 threshold(`ok`, `ng`)로 정의한다: `score < ok → OK`, `score > ng → NG`, 사이는 `REVIEW`.
+  **경계값(`score == ok` 또는 `== ng`)은 `REVIEW`** 다 — 애매하면 사람에게 보낸다.
 - threshold 값과 결정 근거는 MLflow에 param으로 기록한다.
 
 ---
@@ -211,6 +223,29 @@ Camera acquisition
 [artifacts] config 사본, FP/FN gallery, latency breakdown, evidence 예시
 ```
 
+비율 지표는 `{name}`(값) 외에 `{name}_k`, `{name}_n`, `{name}_ci95_low`, `{name}_ci95_high`를 함께
+기록한다. 분모가 0인 지표(예: public track의 CDER)는 값을 기록하지 않고 `metrics.json`에 `null`로 남긴다.
+
+### 9.1 예측 파일 (`predictions.csv`)
+
+모든 run은 샘플별 예측을 artifact로 남긴다. **FN(escape) 샘플 추적과 Failure Gallery의 원본**이다.
+예측값은 metadata(`expected_*`/`actual_*`)에 쓰지 않고 이 파일에만 쓴다.
+
+| 열 | 내용 |
+|---|---|
+| `sample_id` | metadata 조인 키 |
+| `decision` | `OK` / `REVIEW` / `NG` |
+| `anomaly_score` | 판정 전 score (클수록 이상) |
+| `predicted_label_id` | Label Identity 예측. 없으면 빈 값 |
+| `latency_ms` | 샘플 1건 처리 시간 |
+| `image_path`, `normal_or_defect`, `defect_type` | 실패 분석용으로 metadata에서 복사한 ground truth |
+
+모델이 늘어나면 열을 **추가**한다(예: `prototype_score`, `open_set_score`, `ocr_result`,
+`barcode_result`, `rule_violations`). 기존 열의 의미는 바꾸지 않는다.
+
+함께 저장: `metrics.json`(지표 전체 + confusion matrix + REVIEW 처리 규칙), config 사본,
+`datasets/registry.yaml` 사본.
+
 ---
 
 ## 10. XAI 평가 (Week 15, 22에서 구체화)
@@ -233,3 +268,4 @@ Camera acquisition
 |---|---|---|
 | v0.1 | 2026-09-12 | Primary metric(DER/CDER) 확정, REVIEW 집계 규칙, 3-level, CI 보고 규칙, latency 정의 |
 | v0.2 | 2026-09-12 | Product-level 집계 규칙 확정(severity 무관 NG 우선), 집계 키를 `unit_id`/`label_slot`으로 명시 |
+| v0.3 | 2026-09-21 | 코드(`src/evaluation/metrics.py`)와 정의 일치: 지표별 REVIEW 처리표, 2×3 confusion, threshold 경계값=REVIEW, CI는 양측 95%(0건 상한 ≈3.7/n으로 정정), §9.1 `predictions.csv` 형식 |

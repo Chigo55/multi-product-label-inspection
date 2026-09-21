@@ -1,0 +1,32 @@
+# ============================================================
+# Week 2 — 평가 레일 점검 (#40). base.yaml에서 파생.
+# 모델 없음(seed 고정 random score). 숫자는 의미가 없으므로 인용하지 않는다.
+# ============================================================
+
+experiment:
+  name: week02_pipeline_check
+  research_question: null        # 인프라 점검 — 답하는 RQ 없음
+  scenario: null
+  seed: 42
+  notes: "dummy random score로 데이터→예측→평가→MLflow 배관 확인"
+
+dataset:
+  name: mvtec_ad                 # datasets/registry.yaml 키 (root/version/metadata는 거기서)
+  category: bottle               # product_id 필터
+  split: test
+
+model:
+  name: dummy
+
+# 고정값. calibration 하지 않는다 — MVTec AD에는 val split이 없다 (#30)
+decision:
+  thresholds:
+    ok: 0.3
+    ng: 0.7
+  calibration_split: null
+
+latency:
+  device: cpu
+
+tracking:
+  experiment_name: week02_pipeline_check

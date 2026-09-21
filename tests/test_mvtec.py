@@ -6,12 +6,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-from src.utils.mvtec import build_metadata, write_jsonl
+from src.utils.mvtec import build_metadata
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MVTEC_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_ad"
@@ -114,14 +113,6 @@ def test_rejects_defect_folder_in_train(fake_root: Path) -> None:
 def test_missing_category_raises(fake_root: Path) -> None:
     with pytest.raises(FileNotFoundError):
         build_metadata(fake_root, "cable")
-
-
-def test_write_jsonl_round_trip(fake_root: Path, tmp_path: Path) -> None:
-    rows = build_metadata(fake_root, "bottle")
-    out = tmp_path / "out" / "metadata.jsonl"
-    write_jsonl(rows, out)
-    lines = out.read_text(encoding="utf-8").splitlines()
-    assert [json.loads(line) for line in lines] == rows
 
 
 @pytest.mark.slow

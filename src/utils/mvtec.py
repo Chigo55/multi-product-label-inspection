@@ -10,8 +10,6 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -40,13 +38,6 @@ def build_metadata(root: Path, category: str) -> list[dict[str, Any]]:
     if bad:
         raise ValueError(f"train split에 불량 폴더가 있다 (normal-only 전제 위반): {bad}")
     return rows
-
-
-def write_jsonl(rows: Iterable[dict[str, Any]], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def _row(root: Path, category: str, split: str, image: Path) -> dict[str, Any]:
