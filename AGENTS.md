@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+이 저장소에서 작업하는 코딩 에이전트(Claude Code, Codex 등)를 위한 안내다.
 
 ## 이 저장소의 성격
 
