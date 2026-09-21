@@ -1,7 +1,7 @@
-# Dataset Schema v0.2
+# Dataset Schema v0.2.1
 
 > 작성일: 2026-09-12 (Week 1)
-> 상태: **v0.2 — 변경 가능.** 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
+> 상태: **v0.2.1 — 변경 가능.** 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
 > 목적: Public benchmark(MVTec AD/LOCO, VisA ...)와 자체 Multi-Product Multi-Label benchmark를
 > **동일한 metadata 형식**으로 다뤄서, 평가 코드를 한 번만 만들면 되게 한다.
 
@@ -103,7 +103,7 @@
 
 ---
 
-## 3. Public dataset 매핑 규칙 (v0.2)
+## 3. Public dataset 매핑 규칙 (v0.2.1)
 
 Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매핑한다.
 
@@ -116,6 +116,23 @@ Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매
 > Public track은 `expected_*` 필드가 비어 있다(`null`). Logical 검사 항목은 평가에서 자동 제외된다.
 > 제품당 라벨이 1개이므로 `unit_id`는 샘플마다 고유하고 Product-level은 Label-level과 같아진다
 > (`docs/adr/0006`).
+
+### 3.1 Public track 공통 값 (v0.2.1)
+
+원본에 없는 정보는 지어내지 않고 `null`로 둔다. 필수(●) 필드도 **키는 항상 존재**하고 값만 `null`이다.
+
+| 필드 | 값 | 이유 |
+|---|---|---|
+| `unit_id` | `{dataset}/{product_id}/{split}/{원본폴더}_{파일stem}` (예: `mvtec_ad/bottle/test/broken_large_000`) | MVTec은 결함 폴더마다 `000`부터 다시 센다. 폴더명을 넣어야 고유하고 원본 추적도 된다 |
+| `image_path` | 변환 root(예: `datasets/public/mvtec_ad`) 기준 상대 경로. `metadata.jsonl`도 그 root에 둔다 | |
+| `camera_id` | `CAM01` | 단일 카메라 |
+| `expected_*` / `actual_*` / `is_known_label` | `null` | Recipe도 Label Identity도 없다 → Logical·Identity 지표에서 자동 제외 |
+| `is_known_defect` | `true` | 원본 결함 폴더는 설계 시점에 정의된 유형이다 |
+| `defect_type` (정상) | `null` | taxonomy enum에 정상용 값이 없다 |
+| `defect_severity` / `defects[].severity` (불량) | `null` | **Severity는 Recipe가 정한다**(`docs/adr/0004`). public track에는 Recipe가 없으므로 **Critical Escape Rate를 계산하지 않는다.** Defect Escape Rate는 계산한다 |
+| `split` | 원본 그대로(`train`/`test`) | MVTec AD에는 val이 없다. val/calibration 분할은 §4에서 확정 |
+
+> 변환 시 `train`에 불량 폴더가 있으면 **에러로 멈춘다**(normal-only 전제 위반). 구현: `src/utils/mvtec.py`.
 
 ---
 
@@ -136,3 +153,4 @@ Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매
 |---|---|---|
 | v0.1 | 2026-09-12 | 최초 정의. 필드 26개, public 매핑 규칙, split 정책 초안 |
 | v0.2 | 2026-09-12 | `unit_id` 추가(Product-level 집계 키), `label_id`→`label_slot` 재정의, `defects[]`를 정식 필드로 선언 |
+| v0.2.1 | 2026-09-21 | §3.1 public track 공통 값 명시(`unit_id` seq 형식, `image_path` 기준, severity `null` → public track은 CDER 미계산). 필드 변경 없음 |
