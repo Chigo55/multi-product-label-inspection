@@ -1374,6 +1374,7 @@ dependencies = [
     { name = "pillow" },
     { name = "pyyaml" },
     { name = "scikit-learn" },
+    { name = "scipy" },
 ]
 
 [package.optional-dependencies]
@@ -1398,6 +1399,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.3" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "scikit-learn", specifier = ">=1.5" },
+    { name = "scipy", specifier = ">=1.13" },
 ]
 provides-extras = ["cv"]
 

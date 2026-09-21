@@ -25,7 +25,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # pytest의 pythonpath=["."] 와 같은 규약을 스크립트에도 맞춘다.
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.utils.mvtec import build_metadata, write_jsonl  # noqa: E402
+from src.utils.metadata import write_jsonl  # noqa: E402
+from src.utils.mvtec import build_metadata  # noqa: E402
 
 MVTEC_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_ad"
 OUT_PATH = MVTEC_ROOT / "metadata.jsonl"
