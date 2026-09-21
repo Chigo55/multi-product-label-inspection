@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from src.utils.metadata import find_errors
 from src.utils.mvtec import build_metadata
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -115,6 +116,33 @@ def test_val_is_deterministic_20_percent_of_train(tmp_path: Path) -> None:
     assert all("/train/good_" in r["unit_id"] for r in val)
     again = [r for r in build_metadata(tmp_path, "bottle") if r["split"] == "val"]
     assert again == val
+
+
+def test_loco_uses_official_validation_and_logical_category(tmp_path: Path) -> None:
+    # MVTec LOCO: validation 디렉터리가 있으므로 train을 떼지 않는다. logical_anomalies → logical
+    for rel in [
+        "train/good/000.png",
+        "train/good/001.png",
+        "train/good/002.png",
+        "train/good/003.png",
+        "train/good/004.png",
+        "validation/good/000.png",
+        "test/good/000.png",
+        "test/logical_anomalies/000.png",
+        "test/structural_anomalies/000.png",
+        "ground_truth/logical_anomalies/000/000.png",
+    ]:
+        _touch(tmp_path / "juice_bottle" / rel)
+    rows = by_id(build_metadata(tmp_path, "juice_bottle", dataset="mvtec_loco"))
+    assert len(rows) == 9
+    assert [r["split"] for r in rows.values()].count("val") == 1
+    val = rows["mvtec_loco/juice_bottle/validation/good_000/-"]
+    assert val["split"] == "val"
+    logical = rows["mvtec_loco/juice_bottle/test/logical_anomalies_000/-"]
+    assert (logical["defect_category"], logical["defect_type"]) == ("logical", "logical_anomalies")
+    structural = rows["mvtec_loco/juice_bottle/test/structural_anomalies_000/-"]
+    assert structural["defect_category"] == "visual"  # 정본 용어는 visual (CONTEXT.md)
+    assert find_errors(list(rows.values()), image_root=tmp_path) == []
 
 
 def test_rejects_defect_folder_in_train(fake_root: Path) -> None:

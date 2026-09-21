@@ -217,3 +217,26 @@ def test_calibrated_val_ng_rate_never_exceeds_target() -> None:
 def test_calibrate_rejects_bad_input(scores: list[float], f: float, r: float) -> None:
     with pytest.raises(ValueError):
         calibrate(scores, normal_ng_rate=f, normal_review_rate=r)
+
+
+# --- E4 public 보고: 결함 분류·유형별 DER (reports/experiment_scenarios.md) ---
+
+
+def test_der_breakdown_by_category_and_type() -> None:
+    rows, preds = _rows_preds(
+        [("defect", OK, None), ("defect", NG, None), ("defect", OK, None), ("normal", OK, None)]
+    )
+    for row, (cat, typ) in zip(
+        rows[:3],
+        [("logical", "missing"), ("logical", "missing"), ("visual", "scratch")],
+        strict=True,
+    ):
+        row |= {"defect_category": cat, "defect_type": typ}
+    m = evaluate(rows, preds)
+    by_cat = m["defect_escape_rate_by_category"]
+    assert {k: (v["k"], v["n"]) for k, v in by_cat.items()} == {"logical": (1, 2), "visual": (1, 1)}
+    by_type = m["defect_escape_rate_by_type"]
+    assert {k: (v["k"], v["n"]) for k, v in by_type.items()} == {
+        "missing": (1, 2),
+        "scratch": (1, 1),
+    }

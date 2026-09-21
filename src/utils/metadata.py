@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import defaultdict
 from collections.abc import Iterable
@@ -22,6 +23,64 @@ FIELDS = (
 )  # fmt: skip
 SPLITS = {"train", "val", "test", "reference"}
 SEVERITY_RANK = {"CRITICAL": 3, "MAJOR": 2, "MINOR": 1}  # null = Recipe 없음 (schema §3.1)
+PUBLIC_VAL_FRACTION = 0.2  # val이 없는 public 데이터: train 정상 중 val로 떼는 비율 (schema §4.3)
+
+
+def public_row(
+    *, unit_id: str, product_id: str, image_path: str, split: str,
+    defect_types: list[str], defect_category: str,
+) -> dict[str, Any]:  # fmt: skip
+    """public track row (schema §3.1). Recipe·Label Identity가 없으므로 해당 필드는 null이다.
+
+    defect_types가 비면 정상. 여러 개면 첫 번째가 대표값이다 (severity가 전부 null이라 우열이 없다).
+    """
+    is_normal = not defect_types
+    return {
+        "sample_id": f"{unit_id}/-",
+        "unit_id": unit_id,
+        "product_id": product_id,
+        "label_slot": "-",
+        "camera_id": "CAM01",
+        "image_path": image_path,
+        "expected_label_id": None,
+        "actual_label_id": None,
+        "expected_text": None,
+        "actual_text": None,
+        "expected_barcode": None,
+        "actual_barcode": None,
+        "expected_position": None,
+        "actual_position": None,
+        "normal_or_defect": "normal" if is_normal else "defect",
+        "defect_category": "none" if is_normal else defect_category,
+        "defect_type": None if is_normal else defect_types[0],
+        "defect_severity": "none" if is_normal else None,
+        "defects": [{"type": t, "severity": None} for t in defect_types],
+        "is_known_label": None,
+        "is_known_defect": True,
+        "production_lot": None,
+        "revision": None,
+        "split": split,
+        "experiment_tags": [],
+    }
+
+
+def assign_val(
+    rows: list[dict[str, Any]], fraction: float = PUBLIC_VAL_FRACTION
+) -> list[dict[str, Any]]:
+    """제품(product_id)마다 train 정상 중 fraction을 val로 옮긴 새 row 목록을 돌려준다 (schema §4.3).
+
+    threshold를 제품별로 정하므로 비율도 제품별로 맞춘다. sha256(unit_id) 순서로 고르므로
+    Python 버전이나 random seed와 무관하게 항상 같은 샘플이 뽑힌다.
+    """
+    train: dict[str, list[str]] = defaultdict(list)
+    for r in rows:
+        if r["split"] == "train" and r["normal_or_defect"] == "normal":
+            train[r["product_id"]].append(r["unit_id"])
+    val_ids = set()
+    for units in train.values():
+        ordered = sorted(units, key=lambda u: hashlib.sha256(u.encode()).hexdigest())
+        val_ids |= set(ordered[: round(len(ordered) * fraction)])
+    return [r | {"split": "val"} if r["unit_id"] in val_ids else r for r in rows]
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:

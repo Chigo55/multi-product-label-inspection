@@ -28,7 +28,7 @@ uv run ruff check . --fix        # lint (+ 자동 수정)
 uv run ruff format .             # format (black 대체 — black은 설치하지 않는다)
 uv run pyrefly check             # type check
 
-uv run experiments/week02_mvtec_smoke.py      # MVTec AD를 datasets/public/mvtec_ad/ 에 풀어 둔 뒤 metadata 생성
+uv run experiments/build_metadata.py mvtec_ad  # 원본을 registry의 root에 풀어 둔 뒤 metadata 생성 (mvtec_loco, visa도 같음)
 uv run experiments/week02_pipeline_check.py   # dummy 예측 → 평가 → MLflow (레일 점검)
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
 ```

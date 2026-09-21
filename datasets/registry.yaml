@@ -8,11 +8,22 @@
 
 mvtec_ad:
   version: "1.1"                    # 1.0 → 1.1: train 20%를 val로 분리 (schema v1.0 §4.3)
-  schema: v1.0                      # datasets/schema.md
-  converter: src/utils/mvtec.py     # metadata 재생성: uv run experiments/week02_mvtec_smoke.py
+  schema: v1.1                      # datasets/schema.md
+  converter: src/utils/mvtec.py     # metadata 재생성: uv run experiments/build_metadata.py mvtec_ad
   root: datasets/public/mvtec_ad
   metadata: datasets/public/mvtec_ad/metadata.jsonl
   source: https://www.mydrive.ch/shares/150996/b52ecdcbf521176e9db9c731f2304b27/download/420938113-1629960298/mvtec_anomaly_detection.tar.xz
   sha256: cf4313b13603bec67abb49ca959488f7eedce2a9f7795ec54446c649ac98cd3d
   license: CC BY-NC-SA 4.0          # 상업 이용 금지. 벤치마크 전용 (#6)
+  downloaded: 2026-09-21
+
+visa:
+  version: "1.0"                    # 공식 1cls split + train 정상 20% → val (schema §4.3)
+  schema: v1.1
+  converter: src/utils/visa.py      # metadata 재생성: uv run experiments/build_metadata.py visa
+  root: datasets/public/visa
+  metadata: datasets/public/visa/metadata.jsonl
+  source: https://amazon-visual-anomaly.s3.us-west-2.amazonaws.com/VisA_20220922.tar
+  sha256: 2eb8690c803ab37de0324772964100169ec8ba1fa3f7e94291c9ca673f40f362
+  license: CC BY 4.0                # 상업 이용 가능 (아카이브 동봉 LICENSE-DATASET 확인)
   downloaded: 2026-09-21

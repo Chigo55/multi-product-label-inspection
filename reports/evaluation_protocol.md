@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.4
+# Evaluation Protocol v0.5
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -76,6 +76,9 @@ positive = defect 기준.
 | AUROC | ROC 곡선 아래 면적 | 선행 연구 비교용 (MVTec 등) |
 
 > threshold-free 지표(AUPRC/AUROC)와 threshold-dependent 지표(DER/FPR)를 **항상 함께** 보고한다.
+
+**DER 분해**: `defect_escape_rate_by_category`(visual / logical), `defect_escape_rate_by_type`(대표 `defect_type`별)을
+함께 낸다. 어떤 유형이 새는지가 E4(public)와 MVTec LOCO logical 축의 보고 단위다. 복수 불량 row는 대표값 하나로 센다.
 > threshold는 어떻게 정했는지(§6) 반드시 명시한다.
 
 ---
@@ -281,3 +284,4 @@ Camera acquisition
 | v0.2 | 2026-09-12 | Product-level 집계 규칙 확정(severity 무관 NG 우선), 집계 키를 `unit_id`/`label_slot`으로 명시 |
 | v0.3 | 2026-09-21 | 코드(`src/evaluation/metrics.py`)와 정의 일치: 지표별 REVIEW 처리표, 2×3 confusion, threshold 경계값=REVIEW, CI는 양측 95%(0건 상한 ≈3.7/n으로 정정), §9.1 `predictions.csv` 형식 |
 | v0.4 | 2026-09-21 | §6 threshold 기본 규칙 확정: val 정상 분위수(f=1%, r=10%), f는 제품 단위 목표에서 역산 (#30) |
+| v0.5 | 2026-09-21 | §2 DER 분해(defect_category별 / defect_type별) 추가 (#32) |
