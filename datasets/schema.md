@@ -1,7 +1,7 @@
-# Dataset Schema v0.2.1
+# Dataset Schema v0.3
 
 > 작성일: 2026-09-12 (Week 1)
-> 상태: **v0.2.1 — 변경 가능.** 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
+> 상태: **v0.3 — §4는 확정 전 제안(#30).** 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
 > 목적: Public benchmark(MVTec AD/LOCO, VisA ...)와 자체 Multi-Product Multi-Label benchmark를
 > **동일한 metadata 형식**으로 다뤄서, 평가 코드를 한 번만 만들면 되게 한다.
 
@@ -136,14 +136,49 @@ Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매
 
 ---
 
-## 4. Split 정책 (초안 — Week 2에서 확정)
+## 4. Split 정책 (제안 — #30에서 확정)
 
-- **Leakage 금지 규칙**: 동일 Product Unit(`unit_id`) 또는 동일 LOT의 이미지가 `reference`와 `test`에
-  동시에 들어가지 않는다. `unit_id`가 있으므로 이 규칙은 기계적으로 검증할 수 있다.
-- `reference`는 **정상만** 포함한다.
-- Unknown label(E3)용 라벨은 `reference`에 prototype을 만들지 않는다.
-- Unknown defect(E4)용 불량 유형은 threshold calibration 데이터에 포함하지 않는다.
-- Domain shift(E6)는 LOT / 조명 / 카메라 기준으로 test를 분리한다.
+> ⚠️ **확정 전 제안이다.** `[결정]` 표시 항목은 연구자가 정한다. 확정되면 이 문서를 v1.0으로 올린다.
+> 검증기(`src/utils/metadata.py`)는 현재 **✔ 표시 규칙만** 검사한다.
+
+### 4.1 split 정의
+
+| split | 넣는 것 | 쓰는 곳 | 넣으면 안 되는 것 |
+|---|---|---|---|
+| `train` | 정상 | 모델 학습 (normal-only) | 불량 — MVTec 변환기는 에러로 멈춘다 |
+| `val` | 정상 (+ Known defect) | **threshold calibration 전용** | Unknown label, Unknown defect, `unknown_visual` |
+| `test` | 정상 + 모든 불량 | **최종 보고 전용** | — (threshold·하이퍼파라미터 결정에 쓰지 않는다) |
+| `reference` | 정상 | Onboarding용 prototype (E2) | ✔ 불량, Unknown label(E3) |
+
+### 4.2 Leakage 규칙
+
+1. **한 `unit_id`는 정확히 한 split에만 속한다.** 같은 제품의 다른 라벨·카메라 이미지가 train과 test로
+   갈라지는 것도 막는다. 기존 초안(reference↔test만 금지)보다 강하다. ✔는 reference↔test만 `[결정]`
+2. 같은 `production_lot`이 `reference`와 `test`에 동시에 있으면 안 된다. in-domain 시나리오(E1~E5)의
+   train↔test에도 적용할지 `[결정]`
+3. `is_known_label=false` 샘플은 `test`에만 둔다 (E3). Unknown label은 prototype을 만들지 않는다.
+4. `is_known_defect=false` 샘플은 `test`에만 둔다 (E4). ✔ `unknown_visual`은 이미 검사한다.
+
+> leakage는 숫자를 조용히 과대평가한다. 규칙이 확정되면 전부 검증기에 넣는다.
+
+### 4.3 val이 없는 public 데이터셋 (MVTec AD 등)
+
+MVTec AD는 `train`(정상)과 `test`만 있다. DER은 threshold가 있어야 계산되므로 calibration 데이터가 필요하다.
+
+| 안 | 방법 | 장점 | 단점 |
+|---|---|---|---|
+| **A (권장)** | `train` 정상에서 unit 단위로 일부(예: 20%, seed 고정)를 `val`로 떼어, **정상 score 분포만으로** threshold를 정한다 (예: 정상 FPR 상한) | 불량 희소·normal-only라는 연구 전제와 일치. 공개 `test`를 그대로 둬서 선행 연구와 비교 가능 | calibration에서 DER을 볼 수 없다 |
+| B | `test`를 unit 단위로 `val`/`test`로 나눈다 | 불량을 보고 threshold를 정할 수 있다 | 공개 test가 줄어 선행 연구 수치와 비교가 어긋난다 |
+| C | threshold 없이 AUROC/AUPRC만 보고한다 | 단순하다 | Primary metric(DER)을 계산할 수 없다 — 채택 불가 |
+
+`[결정]` 안 선택, val 비율, threshold 규칙(목표 FPR 값과 `ok`/`ng` 두 threshold를 정하는 방식).
+
+### 4.4 Domain shift (E6)
+
+- test를 shift 요인별 subset으로 나누고 `experiment_tags`에 표시한다 (예: `E6-lot`, `E6-camera`, `E6-light`).
+- threshold는 in-domain `val`에서 정한 값을 **재조정 없이** 그대로 쓴다 — 재조정하면 shift 효과가 가려진다.
+- LOT·카메라는 `production_lot` / `camera_id`로 분리한다. **조명·배경·반사는 전용 필드가 없다.**
+  `experiment_tags`로만 표시할지, 필드(예: `capture_condition`)를 추가할지 `[결정]`
 
 ---
 
@@ -154,3 +189,4 @@ Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매
 | v0.1 | 2026-09-12 | 최초 정의. 필드 26개, public 매핑 규칙, split 정책 초안 |
 | v0.2 | 2026-09-12 | `unit_id` 추가(Product-level 집계 키), `label_id`→`label_slot` 재정의, `defects[]`를 정식 필드로 선언 |
 | v0.2.1 | 2026-09-21 | §3.1 public track 공통 값 명시(`unit_id` seq 형식, `image_path` 기준, severity `null` → public track은 CDER 미계산). 필드 변경 없음 |
+| v0.3 | 2026-09-21 | §4 split/leakage **제안 초안**(#30): split별 용도, unit 단일 split 규칙, val 없는 public 데이터 calibration 안 A/B/C, E6 분리. 필드 변경 없음 |

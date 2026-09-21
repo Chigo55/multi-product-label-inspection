@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 아니라 RQ1~RQ6에 답하기 위해 존재한다. 주제는 다품종·다라벨 제조 환경의 Explainable Hybrid
 Inspection System이고, 시스템 출력은 `OK`/`NG`가 아니라 **판정 + 원인 + 근거**다.
 
-실제 구현은 `src/utils/mvtec.py`(MVTec AD → schema JSONL 변환기)뿐이고 나머지 `src/` 하위는 빈 스켈레톤이다.
+구현된 것은 평가 레일뿐이다: `src/utils/mvtec.py`(MVTec AD → JSONL), `src/utils/metadata.py`(JSONL 입출력·검증),
+`src/evaluation/metrics.py`(지표 정본), `src/utils/tracking.py`(MLflow). 모델은 아직 없다(Week 4 Gate).
 
 ## Commands
 
@@ -27,7 +28,8 @@ uv run ruff check . --fix        # lint (+ 자동 수정)
 uv run ruff format .             # format (black 대체 — black은 설치하지 않는다)
 uv run pyrefly check             # type check
 
-uv run experiments/week02_mvtec_smoke.py   # MVTec AD를 datasets/public/mvtec_ad/ 에 풀어 둔 뒤
+uv run experiments/week02_mvtec_smoke.py      # MVTec AD를 datasets/public/mvtec_ad/ 에 풀어 둔 뒤 metadata 생성
+uv run experiments/week02_pipeline_check.py   # dummy 예측 → 평가 → MLflow (레일 점검)
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
 ```
 
@@ -64,9 +66,11 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 | `CONTEXT.md` | 용어의 정본. 도메인 개념을 부를 때 여기 정의된 단어를 쓴다 |
 | `docs/adr/` | 되돌리기 어려운 결정 7건. 결정을 뒤집기 전에 읽는다 |
 | `reports/research_questions.md` | RQ1~RQ6과 실험 시나리오(E1~E6) 매핑 |
-| `reports/evaluation_protocol.md` | **무엇을 측정하는가.** 여기 없는 지표는 주장 근거로 쓰지 않는다 |
+| `reports/evaluation_protocol.md` | **무엇을 측정하는가.** 여기 없는 지표는 주장 근거로 쓰지 않는다. 코드 정본은 `src/evaluation/metrics.py` — 둘은 항상 같아야 한다 |
+| `reports/experiment_scenarios.md` | E1~E6 시나리오별 입력·분할·지표·성공 기준 |
 | `datasets/schema.md` / `defect_taxonomy.md` | metadata 필드와 불량 enum의 유일한 정의 |
 | `configs/base.yaml` | 실험 설정 원형. 복제해서 모델별 config를 만든다 |
+| `datasets/registry.yaml` | `dataset_version`의 정의(출처·SHA256·schema·변환기). 실제로 받은 데이터만 등록 |
 
 이 문서들은 버전(`v0.2` 등)과 변경 이력 표를 갖는다. **내용을 바꾸면 버전을 올리고 이력에 적는다.**
 
