@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.3
+# Evaluation Protocol v0.4
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -156,7 +156,18 @@ Observed CDER:
 ## 6. Threshold 정책
 
 - threshold는 **test set으로 정하지 않는다.** 반드시 `val`(또는 calibration split)에서 결정한다.
-- 기본 결정 규칙(잠정): **FPR 상한을 고정하고 그 조건에서 DER 최소화**, 또는 그 반대. 실험마다 규칙을 명시한다.
+- **기본 규칙: val 정상 score 분위수** (코드: `calibrate()` in `src/evaluation/metrics.py`)
+
+  ```text
+  t_ng = Q(1 − f)   f = normal_ng_rate     : val 정상 중 NG가 되는 비율 상한 = 목표 과검률 (기본 1%)
+  t_ok = Q(1 − r)   r = normal_review_rate : val 정상 중 약 r이 REVIEW 이상 (기본 10%)
+  Q    = 관측값 중에서 고르는 경험 분위수 (numpy method="higher"), 0 ≤ f ≤ r ≤ 1
+  ```
+
+  불량 없이 정상만으로 기준을 잡는다 — 불량이 희소한 현장 조건과 같다. 불량은 test에서 처음 본다.
+- **f는 제품 단위 목표에서 역산한다.** 제품당 라벨이 L장이고 라벨 오류가 독립이면
+  제품 과검률 ≈ 1 − (1 − f)^L 이다 (f=1%, L=5 → 약 4.9%). public track은 L=1이라 f가 곧 제품 과검률이다.
+- val이 작으면 분위수 해상도가 거칠다 (n=42 → 약 2.4% 단위). 보고할 때 val 정상 수를 함께 적는다.
 - `REVIEW` 구간은 두 threshold(`ok`, `ng`)로 정의한다: `score < ok → OK`, `score > ng → NG`, 사이는 `REVIEW`.
   **경계값(`score == ok` 또는 `== ng`)은 `REVIEW`** 다 — 애매하면 사람에게 보낸다.
 - threshold 값과 결정 근거는 MLflow에 param으로 기록한다.
@@ -269,3 +280,4 @@ Camera acquisition
 | v0.1 | 2026-09-12 | Primary metric(DER/CDER) 확정, REVIEW 집계 규칙, 3-level, CI 보고 규칙, latency 정의 |
 | v0.2 | 2026-09-12 | Product-level 집계 규칙 확정(severity 무관 NG 우선), 집계 키를 `unit_id`/`label_slot`으로 명시 |
 | v0.3 | 2026-09-21 | 코드(`src/evaluation/metrics.py`)와 정의 일치: 지표별 REVIEW 처리표, 2×3 confusion, threshold 경계값=REVIEW, CI는 양측 95%(0건 상한 ≈3.7/n으로 정정), §9.1 `predictions.csv` 형식 |
+| v0.4 | 2026-09-21 | §6 threshold 기본 규칙 확정: val 정상 분위수(f=1%, r=10%), f는 제품 단위 목표에서 역산 (#30) |

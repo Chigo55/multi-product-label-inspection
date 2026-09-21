@@ -1,5 +1,5 @@
 # ============================================================
-# base.yaml — 모든 실험 config의 원형 (v0.1, Week 1)
+# base.yaml — 모든 실험 config의 원형 (v0.2, Week 2: decision을 calibration 규칙으로)
 # 사용법: 이 파일을 복제해서 patchcore.yaml / efficientad.yaml /
 #         anomalydino.yaml / dinov2_prototype.yaml 등으로 만든다.
 # 규칙: 실험에 쓰인 config는 MLflow artifact로 그대로 저장한다.
@@ -28,13 +28,12 @@ model:
   n_shot: null                   # few-shot 실험에서 1 / 5 / 10 / 20 / 50
   params: {}
 
-# 판정 3-state: score < ok → OK, score > ng → NG, 사이는 REVIEW
-# threshold는 반드시 val/calibration split에서 결정한다 (test 금지)
+# 판정 3-state: score < ok → OK, score > ng → NG, 사이(경계 포함)는 REVIEW
+# threshold는 val 정상 score 분위수로 정한다 (evaluation_protocol §6). test 금지
 decision:
-  thresholds:
-    ok: null
-    ng: null
   calibration_split: val
+  normal_ng_rate: 0.01           # f: val 정상 중 NG 비율 상한 = 목표 과검률. 제품당 라벨 L장이면 제품 목표에서 역산
+  normal_review_rate: 0.10       # r: val 정상 중 REVIEW 이상으로 가는 비율 (약)
 
 evaluation:
   primary_metric: defect_escape_rate

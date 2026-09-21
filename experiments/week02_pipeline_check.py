@@ -1,6 +1,6 @@
 """Week 2 — 평가 레일 점검 (#40).
 
-    metadata.jsonl → schema 검증 → dummy 예측 → OK/REVIEW/NG → 평가 → MLflow
+    metadata.jsonl → schema 검증 → dummy score → val 정상으로 threshold 조정 → test 판정 → 평가 → MLflow
 
 모델은 seed 고정 random score다. **지표 숫자는 의미가 없고 인용하지 않는다.**
 확인하는 것은 이후 모든 모델이 같은 loader / 평가 코드 / 기록 형식을 지나가는지다.
@@ -28,7 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # `uv run experiments/x.py`에서 `src` import (smoke 스크립트와 동일)
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.evaluation.metrics import decide, evaluate  # noqa: E402
+from src.evaluation.metrics import calibrate, decide, evaluate  # noqa: E402
 from src.utils.metadata import find_errors, read_jsonl  # noqa: E402
 from src.utils.tracking import git_commit, git_is_dirty, start_experiment  # noqa: E402
 
@@ -45,9 +45,8 @@ def load_yaml(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def predict_all(rows: list[dict], cfg: dict) -> list[dict]:
-    rng = np.random.default_rng(cfg["experiment"]["seed"])
-    t = cfg["decision"]["thresholds"]
+def score_all(rows: list[dict], rng: np.random.Generator) -> list[dict]:
+    """모델 자리. 판정 전 score와 latency만 낸다."""
     preds = []
     for row in rows:
         start = time.perf_counter()
@@ -56,7 +55,6 @@ def predict_all(rows: list[dict], cfg: dict) -> list[dict]:
         preds.append(
             {
                 "sample_id": row["sample_id"],
-                "decision": decide(score, t["ok"], t["ng"]),
                 "anomaly_score": score,
                 "predicted_label_id": None,
                 "latency_ms": latency_ms,
@@ -95,13 +93,22 @@ def main() -> None:
     rows = [r for r in read_jsonl(REPO_ROOT / reg["metadata"]) if r["product_id"] == ds["category"]]
     if errors := find_errors(rows, image_root=REPO_ROOT / reg["root"]):
         raise ValueError(f"metadata 검증 실패 {len(errors)}건: {errors[:5]}")
+    dec = cfg["decision"]
+    val = [r for r in rows if r["split"] == dec["calibration_split"]]
     test = [r for r in rows if r["split"] == ds["split"]]
-    if not test:
+    if not val or not test:
         raise ValueError(
-            f"{ds['category']}/{ds['split']} 샘플이 없다 — smoke 스크립트로 metadata 생성"
+            f"{ds['category']} val/test 샘플이 없다 — smoke 스크립트로 metadata 재생성"
         )
 
-    preds = predict_all(test, cfg)
+    rng = np.random.default_rng(cfg["experiment"]["seed"])
+    val_scores = [
+        p["anomaly_score"]
+        for r, p in zip(val, score_all(val, rng), strict=True)
+        if r["normal_or_defect"] == "normal"
+    ]
+    t_ok, t_ng = calibrate(val_scores, dec["normal_ng_rate"], dec["normal_review_rate"])
+    preds = [p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)} for p in score_all(test, rng)]
     metrics = evaluate(test, preds)
 
     start_experiment(cfg["tracking"]["experiment_name"])
@@ -119,12 +126,15 @@ def main() -> None:
                 "dataset_category": ds["category"],
                 "split": ds["split"],
                 "model_name": cfg["model"]["name"],
-                "threshold_ok": cfg["decision"]["thresholds"]["ok"],
-                "threshold_ng": cfg["decision"]["thresholds"]["ng"],
-                "threshold_source": "fixed (not calibrated)",
+                "threshold_ok": t_ok,
+                "threshold_ng": t_ng,
+                "threshold_source": f"{dec['calibration_split']} normal quantile (n={len(val_scores)})",
+                "normal_ng_rate": dec["normal_ng_rate"],
+                "normal_review_rate": dec["normal_review_rate"],
                 "seed": cfg["experiment"]["seed"],
                 "device": cfg["latency"]["device"],
                 "num_train": sum(r["split"] == "train" for r in rows),
+                "num_val": len(val),
                 "num_test": len(test),
                 "review_policy": metrics["review_policy"],
             }
@@ -141,6 +151,7 @@ def main() -> None:
 
     der, cder = metrics["defect_escape_rate"], metrics["critical_defect_escape_rate"]
     print(f"run_id : {run.info.run_id}  ({cfg['tracking']['experiment_name']})")
+    print(f"thresh : ok={t_ok:.3f} ng={t_ng:.3f}  (val 정상 {len(val_scores)}장 분위수)")
     print(f"test   : {len(test)} samples  confusion {metrics['confusion']}")
     print(f"DER    : {der['k']} / {der['n']} escaped = {der['value']:.2%}  95% CI {der['ci95']}")
     print(f"CDER   : {'N/A (Recipe severity 없음)' if cder['value'] is None else cder}")
