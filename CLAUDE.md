@@ -30,7 +30,7 @@ uv run pyrefly check             # type check
 
 uv run experiments/build_metadata.py mvtec_ad  # 원본을 registry의 root에 풀어 둔 뒤 metadata 생성 (mvtec_loco, visa도 같음)
 uv run experiments/week02_pipeline_check.py   # dummy 예측 → 평가 → MLflow (레일 점검)
-uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts # 메인 체크아웃에서
 ```
 
 PyTorch는 하드웨어 종속이라 `pyproject.toml`에 고정하지 않는다:
@@ -114,11 +114,15 @@ pytest는 `pythonpath = ["."]`, pyrefly는 `search-path = ["."]`로 같은 규�
 (`docs/adr/0007`). params에 `git_commit` / `dataset_version` / `config_path`를 남기고 config
 사본을 artifact로 저장한다. `mlflow.db`와 `mlartifacts/`는 커밋하지 않으므로 **clone해도 실험
 이력은 따라오지 않는다** — 인용할 숫자는 `reports/`에 텍스트로 남긴다.
+워크트리에서 돌려도 메인 체크아웃의 `mlflow.db`에 기록되고, MLflow UI는 메인 체크아웃에서 실행한다.
 
 ## 이 저장소의 규칙
 
 문서에 명시된 것들이다. 어기면 결과가 조용히 무효가 된다.
 
+- 작업은 **이슈 단위로 Orca 워크트리에서** 한다. 이슈 1개 = 워크트리 1개 = 브랜치 1개 = PR 1개. main에 직접 커밋·push하지 않는다. 절차는 `docs/agents/issue-tracker.md`.
+- PR은 **merge commit으로** 머지한다(squash·rebase 금지). 커밋 해시가 보존되어야 MLflow `git_commit`과 이슈 댓글의 해시가 유효하다.
+- gitignore된 로컬 자원(`datasets/public`, `mlflow.db`, `mlartifacts/`)은 메인 체크아웃에만 있다. 코드는 `src/utils/paths.SHARED_ROOT`로 찾는다.
 - 어떤 RQ에도 연결되지 않는 실험은 하지 않는다. 실험 시작 전에 RQ와 Scenario를 먼저 적는다.
 - `notebooks/`는 즉흥 탐색 전용이다. **논문·보고서에 인용할 숫자는 `experiments/`에서만** 나온다.
 - threshold는 `val`(또는 calibration) split에서 정한다. **`test`로 정하지 않는다.**

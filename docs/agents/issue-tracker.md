@@ -13,6 +13,29 @@ Issues and specs for this repo live as GitHub issues in [`Chigo55/multi-product-
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## 작업 흐름: 이슈 → Orca 워크트리 → PR
+
+1. 이슈를 확인하거나 만든다 (`gh issue create`).
+2. 워크트리를 만든다:
+   `orca worktree create --repo id:b9e07235-5b2c-497d-a76a-a87f74b8a471 --name <이슈번호>-<slug> --issue <이슈번호> --no-parent --json`.
+   브랜치는 `Chigo55/<이슈번호>-<slug>`, 기준은 `origin/main`, 위치는
+   `C:/Users/Jeongih/orca/workspaces/multi-product-label-inspection/`이다.
+3. 워크트리에서 `uv sync`를 실행한다 (`.venv`는 워크트리마다 따로 생긴다).
+4. 커밋은 conventional commits를 따르고 본문에 `Refs #N`을 넣는다. 끝내기 전에
+   `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyrefly check`,
+   `uv run pytest -rs`를 통과시킨다 (실데이터 테스트까지 skip 없이).
+5. `git push -u origin <branch>` 후 `gh pr create --base main`으로 PR을 만든다.
+   본문에 Summary / Test plan / `Closes #N`을 넣는다.
+6. `gh pr merge <PR번호> --merge --delete-branch`로 머지한다 (merge commit).
+7. 메인 체크아웃에서 `git pull --ff-only`를 실행한 다음
+   `orca worktree rm --worktree id:<repoId>::<path> --json`으로 워크트리를 지운다.
+
+### 로컬 자원과 실험
+
+데이터(`datasets/public`, `datasets/custom`)·`mlflow.db`·`mlartifacts/`는 메인 체크아웃에만 있고
+코드는 `src.utils.paths.SHARED_ROOT`로 찾는다. 인용할 run은 커밋된 깨끗한 트리(`git_dirty=False`)에서
+돌린다. merge commit이 커밋을 보존하므로 브랜치에서 기록한 `git_commit`도 머지 후 유효하다.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

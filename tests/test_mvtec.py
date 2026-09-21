@@ -13,9 +13,9 @@ import pytest
 
 from src.utils.metadata import find_errors
 from src.utils.mvtec import build_metadata, convert
+from src.utils.paths import SHARED_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-MVTEC_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_ad"
+MVTEC_ROOT = SHARED_ROOT / "datasets" / "public" / "mvtec_ad"
 
 # datasets/schema.md v0.2 §1 의 필드 전체
 SCHEMA_V02_FIELDS = {
@@ -180,7 +180,7 @@ def test_real_bottle_counts() -> None:
     assert all((MVTEC_ROOT / r["image_path"]).is_file() for r in rows)
 
 
-LOCO_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_loco"
+LOCO_ROOT = SHARED_ROOT / "datasets" / "public" / "mvtec_loco"
 
 
 @pytest.mark.slow

@@ -21,6 +21,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.utils import mvtec, visa  # noqa: E402
 from src.utils.metadata import find_errors, write_jsonl  # noqa: E402
+from src.utils.paths import SHARED_ROOT  # noqa: E402
 
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
 CONVERTERS = {
@@ -31,17 +32,17 @@ CONVERTERS = {
 
 
 def build(name: str, entry: dict) -> None:
-    root = REPO_ROOT / entry["root"]
+    root = SHARED_ROOT / entry["root"]
     rows = CONVERTERS[name](root)
     if errors := find_errors(rows, image_root=root):
         raise ValueError(
             f"{name}: 검증 실패 {len(errors)}건 — metadata를 쓰지 않는다: {errors[:5]}"
         )
-    out = REPO_ROOT / entry["metadata"]
+    out = SHARED_ROOT / entry["metadata"]
     write_jsonl(rows, out)
 
     print(
-        f"[{name} v{entry['version']}] {len(rows)} rows → {out.relative_to(REPO_ROOT).as_posix()}"
+        f"[{name} v{entry['version']}] {len(rows)} rows → {out.relative_to(SHARED_ROOT).as_posix()}"
     )
     counts = Counter((r["product_id"], r["split"], r["normal_or_defect"]) for r in rows)
     for product in sorted({r["product_id"] for r in rows}):

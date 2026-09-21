@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from src.utils.metadata import find_errors
+from src.utils.paths import SHARED_ROOT
 from src.utils.visa import convert
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-VISA_ROOT = REPO_ROOT / "datasets" / "public" / "visa"
+VISA_ROOT = SHARED_ROOT / "datasets" / "public" / "visa"
 
 
 def _write(path: Path, text: str = "") -> None:
