@@ -1,0 +1,76 @@
+# ============================================================
+# base.yaml — 모든 실험 config의 원형 (v0.1, Week 1)
+# 사용법: 이 파일을 복제해서 patchcore.yaml / efficientad.yaml /
+#         anomalydino.yaml / dinov2_prototype.yaml 등으로 만든다.
+# 규칙: 실험에 쓰인 config는 MLflow artifact로 그대로 저장한다.
+# ============================================================
+
+experiment:
+  name: baseline
+  # 이 실험이 답하는 Research Question (reports/research_questions.md)
+  research_question: null        # 예: RQ2
+  # 이 실험이 속한 시나리오 (E1~E6)
+  scenario: null                 # 예: E1
+  seed: 42
+  notes: ""
+
+dataset:
+  name: pilot
+  split: test
+  root: datasets/custom          # public이면 datasets/public
+  metadata: null                 # 예: datasets/custom/metadata.jsonl
+  version: v0.1
+
+model:
+  name: none                     # none | patchcore | efficientad | anomalydino | dinov2_prototype | ...
+  backbone: null
+  checkpoint: null
+  n_shot: null                   # few-shot 실험에서 1 / 5 / 10 / 20 / 50
+  params: {}
+
+# 판정 3-state: score < ok → OK, score > ng → NG, 사이는 REVIEW
+# threshold는 반드시 val/calibration split에서 결정한다 (test 금지)
+decision:
+  thresholds:
+    ok: null
+    ng: null
+  calibration_split: val
+
+evaluation:
+  primary_metric: defect_escape_rate
+
+  metrics:
+    - recall
+    - precision
+    - f1
+    - auprc
+    - auroc
+    - false_positive_rate
+
+  # reports/evaluation_protocol.md 에 정의된 항목들
+  critical_only_metrics:
+    - critical_defect_escape_rate
+
+  levels:
+    - defect
+    - label
+    - product
+
+  report_confidence_interval: true   # Clopper-Pearson 95%
+  n_seeds: 1                          # few-shot 등 랜덤성 있는 실험은 3 이상
+
+latency:
+  measure: true
+  percentiles:
+    - 50
+    - 95
+    - 99
+  warmup_iters: 10
+  measure_iters: 100
+  device: cpu                         # cpu | cuda | jetson | rpi
+
+tracking:
+  backend: mlflow
+  tracking_uri: sqlite:///mlflow.db   # MLflow 3.x: file store는 maintenance mode
+  experiment_name: default
+  log_artifacts: true
