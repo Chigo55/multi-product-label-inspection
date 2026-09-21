@@ -32,16 +32,36 @@
 
 | Paper | Year | Venue | Problem | Normal-only | Few-shot | Multi-class | Open-set | Logical | XAI | Code | License | Latency | Notes |
 | ----- | ---: | ----- | ------- | ----------- | -------- | ----------- | -------- | ------- | --- | ---- | ------- | ------- | ----- |
-| [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad) | 2019 | CVPR (IJCV 2021 ext.) | Industrial AD benchmark (15 cat.) | ● | ✕ | ○ | ✕ | ✕ | ✕ | dataset | non-commercial? | ✕ | 사실상 표준 benchmark. **상업적 이용 조건 확인 필요** |
-| [MVTec LOCO AD](https://www.mvtec.com/company/research/datasets/mvtec-loco) | 2022 | IJCV | Structural **vs Logical** anomaly benchmark | ● | ✕ | ○ | ✕ | ● | ✕ | dataset | non-commercial? | ✕ | **이번 연구의 logical 축과 직접 연결.** 평가지표 sPRO. 요약: [`mvtec_loco_ad.md`](mvtec_loco_ad.md) |
-| [PatchCore](https://arxiv.org/abs/2106.08265) | 2022 | CVPR | Memory-bank 기반 normal-only AD | ● | ○ | ✕ | ✕ | ✕ | ○ heatmap | [amazon-science/patchcore-inspection](https://github.com/amazon-science/patchcore-inspection), anomalib | Apache-2.0? | ○ | **필수 baseline.** 요약: [`patchcore.md`](patchcore.md) |
-| [EfficientAD](https://arxiv.org/abs/2303.14535) | 2024 | WACV | 밀리초급 AD | ● | ✕ | ✕ | ✕ | ○ | ○ heatmap | anomalib (비공식 재현) | ? | ● | **100/500/1000ms 비교의 핵심 후보** |
-| [DINOv2](https://arxiv.org/abs/2304.07193) | 2023/24 | TMLR | Self-supervised visual foundation model | n/a | n/a | n/a | n/a | ✕ | ✕ | [facebookresearch/dinov2](https://github.com/facebookresearch/dinov2) | **요확인 (weights 라이선스)** | ○ | Label identity / AD의 공통 backbone. **상업적 사용 가능 여부 반드시 확인** |
-| [AnomalyDINO](https://arxiv.org/abs/2405.14529) | 2025 | WACV | DINOv2 기반 **training-free few-shot** AD | ● | ● | ○ | ✕ | ✕ | ○ | ? | ? | ○ | **RQ4 신규 라벨 onboarding과 직결** |
-| [Dinomaly](https://arxiv.org/abs/2405.14325) `arXiv ID?` | 2025 | CVPR? | Multi-class unsupervised AD (unified) | ● | ○ | ● | ✕ | ○ | ○ | ? | ? | ? | **Architecture D 핵심 baseline** |
-| [INP-Former](https://arxiv.org/abs/2503.02424) `arXiv ID?` | 2025 | CVPR? | Intrinsic normal prototype / universal AD | ● | ● | ● | ✕ | ○ | ○ | ? | ? | ? | Dinomaly와 함께 unified 비교군 |
-| [OpenMax](https://arxiv.org/abs/1511.06233) | 2016 | CVPR | Open-set recognition의 기초 | ✕ | ✕ | ● | ● | ✕ | ✕ | ? | ? | ● | **Unknown label 거부의 출발점 (RQ1/RQ3)** |
-| [Prototypical Networks](https://arxiv.org/abs/1703.05175) | 2017 | NeurIPS | Few-shot metric learning | ✕ | ● | ● | ○ | ✕ | ✕ | 다수 공개 | MIT 계열? | ● | **Prototype 등록 구조의 이론적 근거 (RQ4)** |
+| [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad) | 2019 | CVPR (IJCV 2021 ext.) | Industrial AD benchmark (15 cat.) | ● | ✕ | ○ | ✕ | ✕ | ✕ | dataset | **CC BY-NC-SA 4.0** (상업 이용 금지) | ✕ | 사실상 표준 benchmark. **벤치마크 전용** — 배포 모델 학습 데이터로 쓰지 않는다 |
+| [MVTec LOCO AD](https://www.mvtec.com/company/research/datasets/mvtec-loco) | 2022 | IJCV | Structural **vs Logical** anomaly benchmark | ● | ✕ | ○ | ✕ | ● | ✕ | dataset | **CC BY-NC-SA 4.0** (상업 이용 금지) | ✕ | **이번 연구의 logical 축과 직접 연결.** 평가지표 sPRO. 요약: [`mvtec_loco_ad.md`](mvtec_loco_ad.md) |
+| [PatchCore](https://arxiv.org/abs/2106.08265) | 2022 | CVPR | Memory-bank 기반 normal-only AD | ● | ○ | ✕ | ✕ | ✕ | ○ heatmap | [amazon-science/patchcore-inspection](https://github.com/amazon-science/patchcore-inspection), anomalib | Apache-2.0 (코드) ⚠️ backbone weights 별도 | ○ | **필수 baseline.** backbone이 ImageNet 사전학습 WideResNet50 → 아래 §라이선스 확인 결과. 요약: [`patchcore.md`](patchcore.md) |
+| [EfficientAD](https://arxiv.org/abs/2303.14535) | 2024 | WACV | 밀리초급 AD | ● | ✕ | ✕ | ✕ | ○ | ○ heatmap | **공식 구현 없음.** [anomalib](https://github.com/open-edge-platform/anomalib/tree/main/src/anomalib/models/image/efficient_ad), [nelson1425/EfficientAD](https://github.com/nelson1425/EfficientAD) (둘 다 비공식) | Apache-2.0 (비공식 코드) ⚠️ teacher weights·ImageNet 별도 | ● | **100/500/1000ms 비교의 핵심 후보.** 학습에 ImageNet(anomalib은 Imagenette) 이미지가 들어간다 |
+| [DINOv2](https://arxiv.org/abs/2304.07193) | 2023/24 | TMLR | Self-supervised visual foundation model | n/a | n/a | n/a | n/a | ✕ | ✕ | [facebookresearch/dinov2](https://github.com/facebookresearch/dinov2) | **Apache-2.0 (코드+weights)** | ○ | Label identity / AD의 공통 backbone. **상업 이용 가능.** 2023-08 CC-BY-NC→Apache-2.0 변경. 같은 레포의 XRay-DINO·Cell-DINO weights는 FAIR Noncommercial — 혼동 주의 |
+| [AnomalyDINO](https://arxiv.org/abs/2405.14529) | 2025 | WACV | DINOv2 기반 **training-free few-shot** AD | ● | ● | ○ | ✕ | ✕ | ○ | [dammsi/AnomalyDINO](https://github.com/dammsi/AnomalyDINO) (공식) | Apache-2.0 | ○ | **RQ4 신규 라벨 onboarding과 직결.** backbone DINOv2(Apache-2.0) |
+| [Dinomaly](https://arxiv.org/abs/2405.14325) | 2025 | CVPR | Multi-class unsupervised AD (unified) | ● | ○ | ● | ✕ | ○ | ○ | [guojiajeremy/Dinomaly](https://github.com/guojiajeremy/Dinomaly) (공식) | Apache-2.0 | ? | **Architecture D 핵심 baseline.** backbone DINOv2(Apache-2.0). 확장판 Dinomaly2 별도 레포 |
+| [INP-Former](https://arxiv.org/abs/2503.02424) | 2025 | CVPR | Intrinsic normal prototype / universal AD | ● | ● | ● | ✕ | ○ | ○ | [luow23/INP-Former](https://github.com/luow23/INP-Former) (공식) | MIT | ? | Dinomaly와 함께 unified 비교군. 배포된 학습 weights는 MVTec/VisA/Real-IAD로 학습 → 데이터셋 조건을 따른다 |
+| [OpenMax](https://arxiv.org/abs/1511.06233) | 2016 | CVPR | Open-set recognition의 기초 | ✕ | ✕ | ● | ● | ✕ | ✕ | [abhijitbendale/OSDN](https://github.com/abhijitbendale/OSDN) (공식) | BSD-3-Clause ⚠️ 번들 libMR은 **비상업 전용** | ● | **Unknown label 거부의 출발점 (RQ1/RQ3).** Weibull fitting을 libMR 대신 직접 구현해야 한다 |
+| [Prototypical Networks](https://arxiv.org/abs/1703.05175) | 2017 | NeurIPS | Few-shot metric learning | ✕ | ● | ● | ○ | ✕ | ✕ | [jakesnell/prototypical-networks](https://github.com/jakesnell/prototypical-networks) (공식) | MIT | ● | **Prototype 등록 구조의 이론적 근거 (RQ4)** |
+
+### 라이선스 확인 결과 (2026-09-21, #6)
+
+원문(데이터셋 공식 페이지, 레포 LICENSE/README)에서 직접 확인했다. **법률 자문이 아니라 공개 조건의
+기록**이며, 특허는 조사하지 않았다.
+
+판단 기준(#6): 논문·벤치마크 목적이면 non-commercial도 쓴다. **최종 파이프라인에 들어갈 구성요소**
+(backbone, 모델 코드, 배포 weights)만 상업 이용 가능해야 한다.
+
+| 구분 | 대상 | 조건 | 판단 |
+|---|---|---|---|
+| 벤치마크 | MVTec AD, MVTec LOCO AD | CC BY-NC-SA 4.0 — "not allowed to use the dataset for commercial purposes" | 벤치마크로만 쓴다. 이 데이터로 학습한 weights는 배포하지 않는다 |
+| 벤치마크 | VisA (참고) | CC BY 4.0 (amazon-science/spot-diff) | 상업 이용 가능한 public benchmark. Week 2 이후 후보 |
+| 배포 가능 | DINOv2 backbone (`dinov2_vit*14`, `*_reg`) | Apache-2.0, 코드+weights | **최종 파이프라인 backbone으로 사용 가능** |
+| 배포 가능 | anomalib, PatchCore 공식 코드, AnomalyDINO, Dinomaly | Apache-2.0 | 코드는 사용 가능 |
+| 배포 가능 | INP-Former, Prototypical Networks | MIT | 코드는 사용 가능 |
+| ⚠️ 조건부 | PatchCore / EfficientAD의 ImageNet 사전학습 weights | torchvision: "pre-trained models ... may have their own licenses ... derived from the dataset used for training" | 불명확. **대체: backbone을 DINOv2로 교체**하거나 배포 전 법무 확인 |
+| ⚠️ 조건부 | EfficientAD 학습 | ImageNet(anomalib은 Imagenette) 이미지를 loss에 사용 | 위와 같음. 배포용이면 상업 이용 가능한 일반 이미지셋으로 교체 |
+| ✕ 불가 | OpenMax 공식 구현의 libMR | "For-profit companies may not use this source code", 특허 출원(CU TTO File CU2338C) 언급 | libMR 대신 `scipy.stats`로 Weibull fitting 직접 구현. **특허 등록 여부는 배포 전 확인** |
+| 참고 | DINOv3 | 자체 "DINOv3 License" (Apache 아님). NC 조항은 없고 ITAR·무역 제재 용도 금지 | 도입 시 원문 재확인 |
 
 ---
 
