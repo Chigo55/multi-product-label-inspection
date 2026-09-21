@@ -1,7 +1,7 @@
-# Dataset Schema v1.0
+# Dataset Schema v1.1
 
 > 작성일: 2026-09-12 (Week 1)
-> 상태: **v1.0 — Week 2 확정.** 필드를 바꾸면 버전을 올리고 변환기·검증기를 함께 고친다. 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
+> 상태: **v1.1 — Week 2 확정.** 필드를 바꾸면 버전을 올리고 변환기·검증기를 함께 고친다. 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
 > 목적: Public benchmark(MVTec AD/LOCO, VisA ...)와 자체 Multi-Product Multi-Label benchmark를
 > **동일한 metadata 형식**으로 다뤄서, 평가 코드를 한 번만 만들면 되게 한다.
 
@@ -103,21 +103,21 @@
 
 ---
 
-## 3. Public dataset 매핑 규칙 (v0.2.1)
+## 3. Public dataset 매핑 규칙
 
 Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매핑한다.
 
 | Public | `product_id` | `label_slot` | `defect_category` | 비고 |
 |---|---|---|---|---|
-| MVTec AD | category (예: `bottle`) | `-` | `visual` | `defect_type`은 원본 결함 폴더명 사용 |
-| MVTec LOCO AD | category (예: `juice_bottle`) | `-` | `structural_anomalies`→`visual`, `logical_anomalies`→`logical` | 이번 연구의 logical 축과 직접 연결 |
-| VisA | object 이름 | `-` | `visual` | Week 2 이후 |
+| MVTec AD | category (예: `bottle`) | `-` | `visual` | `defect_type` = 원본 결함 폴더명. val 없음 → train 정상 20% (§4.3) |
+| MVTec LOCO AD | category (예: `juice_bottle`) | `-` | `structural_anomalies`→`visual`, `logical_anomalies`→`logical` | `defect_type` = 원본 폴더명(`logical_anomalies`/`structural_anomalies`). **공식 `validation` → `val`** (train을 떼지 않는다). 이번 연구의 logical 축과 직접 연결 |
+| VisA | object 이름 (예: `candle`) | `-` | `visual` | split = 공식 `split_csv/1cls.csv`, val 없음 → train 정상 20%. `defect_type` = `<object>/image_anno.csv`의 불량 설명 원문. 쉼표로 이어진 복수 불량은 `defects[]` 여러 원소, 대표값은 첫 번째 |
 
 > Public track은 `expected_*` 필드가 비어 있다(`null`). Logical 검사 항목은 평가에서 자동 제외된다.
 > 제품당 라벨이 1개이므로 `unit_id`는 샘플마다 고유하고 Product-level은 Label-level과 같아진다
 > (`docs/adr/0006`).
 
-### 3.1 Public track 공통 값 (v0.2.1)
+### 3.1 Public track 공통 값
 
 원본에 없는 정보는 지어내지 않고 `null`로 둔다. 필수(●) 필드도 **키는 항상 존재**하고 값만 `null`이다.
 
@@ -132,7 +132,8 @@ Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매
 | `defect_severity` / `defects[].severity` (불량) | `null` | **Severity는 Recipe가 정한다**(`docs/adr/0004`). public track에는 Recipe가 없으므로 **Critical Escape Rate를 계산하지 않는다.** Defect Escape Rate는 계산한다 |
 | `split` | `train`의 20% → `val`, 나머지는 원본 그대로 | MVTec AD에는 val이 없다 → §4.3 |
 
-> 변환 시 `train`에 불량 폴더가 있으면 **에러로 멈춘다**(normal-only 전제 위반). 구현: `src/utils/mvtec.py`.
+> 변환 시 `train`(LOCO는 `validation` 포함)에 불량이 있으면 **에러로 멈춘다**(normal-only 전제 위반).
+> 공통 값은 `src/utils/metadata.py`의 `public_row()` 한 곳에서 만든다. 변환기: `src/utils/mvtec.py`(AD·LOCO), `src/utils/visa.py`.
 
 ---
 
@@ -188,3 +189,4 @@ threshold를 정한다.** 공개 `test`는 건드리지 않으므로 선행 연�
 | v0.2.1 | 2026-09-21 | §3.1 public track 공통 값 명시(`unit_id` seq 형식, `image_path` 기준, severity `null` → public track은 CDER 미계산). 필드 변경 없음 |
 | v0.3 | 2026-09-21 | §4 split/leakage **제안 초안**(#30): split별 용도, unit 단일 split 규칙, val 없는 public 데이터 calibration 안 A/B/C, E6 분리. 필드 변경 없음 |
 | **v1.0** | 2026-09-21 | **확정**(#30). unit 단일 split, test LOT 분리(test ↔ 나머지 전부), Unknown label/defect test 격리, public val = train 정상 20%(sha256 순서) + 정상 분위수 calibration, E6는 태그로 표시. 필드 변경 없음 |
+| v1.1 | 2026-09-21 | §3 MVTec LOCO(공식 validation→val, defect_type=폴더명) / VisA(1cls split, image_anno 설명 → 복수 defects[]) 매핑 명시 (#32). 필드 변경 없음 |

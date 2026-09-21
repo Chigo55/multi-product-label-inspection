@@ -6,7 +6,7 @@
 확인하는 것은 이후 모든 모델이 같은 loader / 평가 코드 / 기록 형식을 지나가는지다.
 
 실행 (metadata.jsonl이 먼저 있어야 한다):
-    uv run experiments/week02_mvtec_smoke.py
+    uv run experiments/build_metadata.py mvtec_ad
     uv run experiments/week02_pipeline_check.py
 """
 
@@ -25,7 +25,7 @@ import numpy as np
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# `uv run experiments/x.py`에서 `src` import (smoke 스크립트와 동일)
+# `uv run experiments/x.py`에서 `src` import (pytest의 pythonpath=["."]와 같은 규약)
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.evaluation.metrics import calibrate, decide, evaluate  # noqa: E402
@@ -98,7 +98,7 @@ def main() -> None:
     test = [r for r in rows if r["split"] == ds["split"]]
     if not val or not test:
         raise ValueError(
-            f"{ds['category']} val/test 샘플이 없다 — smoke 스크립트로 metadata 재생성"
+            f"{ds['category']} val/test 샘플이 없다 — build_metadata.py로 metadata 재생성"
         )
 
     rng = np.random.default_rng(cfg["experiment"]["seed"])

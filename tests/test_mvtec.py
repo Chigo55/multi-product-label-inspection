@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 import pytest
 
-from src.utils.mvtec import build_metadata
+from src.utils.metadata import find_errors
+from src.utils.mvtec import build_metadata, convert
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MVTEC_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_ad"
@@ -117,6 +119,33 @@ def test_val_is_deterministic_20_percent_of_train(tmp_path: Path) -> None:
     assert again == val
 
 
+def test_loco_uses_official_validation_and_logical_category(tmp_path: Path) -> None:
+    # MVTec LOCO: validation 디렉터리가 있으므로 train을 떼지 않는다. logical_anomalies → logical
+    for rel in [
+        "train/good/000.png",
+        "train/good/001.png",
+        "train/good/002.png",
+        "train/good/003.png",
+        "train/good/004.png",
+        "validation/good/000.png",
+        "test/good/000.png",
+        "test/logical_anomalies/000.png",
+        "test/structural_anomalies/000.png",
+        "ground_truth/logical_anomalies/000/000.png",
+    ]:
+        _touch(tmp_path / "juice_bottle" / rel)
+    rows = by_id(build_metadata(tmp_path, "juice_bottle", dataset="mvtec_loco"))
+    assert len(rows) == 9
+    assert [r["split"] for r in rows.values()].count("val") == 1
+    val = rows["mvtec_loco/juice_bottle/validation/good_000/-"]
+    assert val["split"] == "val"
+    logical = rows["mvtec_loco/juice_bottle/test/logical_anomalies_000/-"]
+    assert (logical["defect_category"], logical["defect_type"]) == ("logical", "logical_anomalies")
+    structural = rows["mvtec_loco/juice_bottle/test/structural_anomalies_000/-"]
+    assert structural["defect_category"] == "visual"  # 정본 용어는 visual (CONTEXT.md)
+    assert find_errors(list(rows.values()), image_root=tmp_path) == []
+
+
 def test_rejects_defect_folder_in_train(fake_root: Path) -> None:
     # normal-only 학습 전제가 깨지는 데이터는 조용히 변환하지 않는다
     _touch(fake_root / "bottle" / "train" / "broken_large" / "000.png")
@@ -149,3 +178,20 @@ def test_real_bottle_counts() -> None:
         ("test", "defect"): 63,
     }
     assert all((MVTEC_ROOT / r["image_path"]).is_file() for r in rows)
+
+
+LOCO_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_loco"
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not (LOCO_ROOT / "juice_bottle").is_dir(), reason="MVTec LOCO 미다운로드")
+def test_real_loco_counts() -> None:
+    # 배포본(sha256 9e7c84db…) 기준. 논문 표기(3,644장)와 7장 차이 — 원본 파일 수와는 일치한다
+    rows = convert(LOCO_ROOT, "mvtec_loco")
+    splits = Counter(r["split"] for r in rows)
+    assert (splits["train"], splits["val"], splits["test"]) == (1778, 305, 1568)
+    assert Counter(r["defect_category"] for r in rows if r["defects"]) == {
+        "logical": 561,
+        "visual": 432,
+    }
+    assert find_errors(rows, image_root=LOCO_ROOT) == []

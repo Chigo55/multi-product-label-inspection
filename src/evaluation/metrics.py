@@ -11,6 +11,7 @@ REVIEW 처리 규칙 (ADR 0002):
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any
 
@@ -106,4 +107,17 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         "f1": 2 * p * r / (p + r) if p is not None and r is not None and p + r > 0 else None,
         "auroc": float(roc_auc_score(is_defect, score)) if n_def and n_norm else None,
         "auprc": float(average_precision_score(is_defect, score)) if n_def and n_norm else None,
+        "defect_escape_rate_by_category": _der_by(rows, decision, "defect_category"),
+        "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
     }
+
+
+def _der_by(rows: list[dict[str, Any]], decision: list[str], key: str) -> dict[str, Any]:
+    """불량 row만 key로 묶은 DER. 복수 불량 row는 대표값(defect_type) 하나로만 센다."""
+    groups: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for row, dec in zip(rows, decision, strict=True):
+        if row["normal_or_defect"] == "defect":
+            g = groups[str(row.get(key))]
+            g[0] += dec == OK
+            g[1] += 1
+    return {k: rate(*groups[k]) for k in sorted(groups)}

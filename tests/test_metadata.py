@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from src.utils.metadata import FIELDS, find_errors, read_jsonl, write_jsonl
+from src.utils.metadata import FIELDS, assign_val, find_errors, read_jsonl, write_jsonl
 from src.utils.mvtec import build_metadata
 
 
@@ -171,3 +171,15 @@ def test_jsonl_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "out" / "metadata.jsonl"
     write_jsonl(rows, path)
     assert read_jsonl(path) == rows
+
+
+def test_assign_val_takes_fraction_per_product() -> None:
+    # threshold는 제품별로 정하므로 val도 제품마다 20%여야 한다 (전체에서 20%가 아니라)
+    rows = [
+        normal(sample_id=f"{p}/{i}/-", unit_id=f"{p}/{i}", product_id=p, split="train")
+        for p, n in (("a", 3), ("b", 3), ("c", 30))
+        for i in range(n)
+    ]
+    val = [r for r in assign_val(rows, 0.2) if r["split"] == "val"]
+    # 제품별: round(0.6)=1, round(0.6)=1, round(6)=6 → 8. 전체에서 뽑으면 round(7.2)=7
+    assert [sum(r["product_id"] == p for r in val) for p in "abc"] == [1, 1, 6]
