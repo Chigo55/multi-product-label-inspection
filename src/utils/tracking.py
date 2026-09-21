@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 import mlflow
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-TRACKING_URI = f"sqlite:///{REPO_ROOT / 'mlflow.db'}"
-ARTIFACT_ROOT = REPO_ROOT / "mlartifacts"
+from src.utils.paths import REPO_ROOT, SHARED_ROOT
+
+TRACKING_URI = f"sqlite:///{SHARED_ROOT / 'mlflow.db'}"
+ARTIFACT_ROOT = SHARED_ROOT / "mlartifacts"
 
 
 def _git(*args: str) -> str | None:

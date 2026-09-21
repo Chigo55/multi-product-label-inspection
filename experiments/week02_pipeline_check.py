@@ -30,6 +30,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.evaluation.metrics import calibrate, decide, evaluate  # noqa: E402
 from src.utils.metadata import find_errors, read_jsonl  # noqa: E402
+from src.utils.paths import SHARED_ROOT  # noqa: E402
 from src.utils.tracking import git_commit, git_is_dirty, start_experiment  # noqa: E402
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week02_pipeline_check.yaml"
@@ -90,8 +91,10 @@ def main() -> None:
     ds = cfg["dataset"]
     reg = load_yaml(REGISTRY_PATH)[ds["name"]]
 
-    rows = [r for r in read_jsonl(REPO_ROOT / reg["metadata"]) if r["product_id"] == ds["category"]]
-    if errors := find_errors(rows, image_root=REPO_ROOT / reg["root"]):
+    rows = [
+        r for r in read_jsonl(SHARED_ROOT / reg["metadata"]) if r["product_id"] == ds["category"]
+    ]
+    if errors := find_errors(rows, image_root=SHARED_ROOT / reg["root"]):
         raise ValueError(f"metadata 검증 실패 {len(errors)}건: {errors[:5]}")
     dec = cfg["decision"]
     val = [r for r in rows if r["split"] == dec["calibration_split"]]
