@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 import pytest
 
 from src.utils.metadata import find_errors
-from src.utils.mvtec import build_metadata
+from src.utils.mvtec import build_metadata, convert
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MVTEC_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_ad"
@@ -177,3 +178,20 @@ def test_real_bottle_counts() -> None:
         ("test", "defect"): 63,
     }
     assert all((MVTEC_ROOT / r["image_path"]).is_file() for r in rows)
+
+
+LOCO_ROOT = REPO_ROOT / "datasets" / "public" / "mvtec_loco"
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not (LOCO_ROOT / "juice_bottle").is_dir(), reason="MVTec LOCO 미다운로드")
+def test_real_loco_counts() -> None:
+    # 배포본(sha256 9e7c84db…) 기준. 논문 표기(3,644장)와 7장 차이 — 원본 파일 수와는 일치한다
+    rows = convert(LOCO_ROOT, "mvtec_loco")
+    splits = Counter(r["split"] for r in rows)
+    assert (splits["train"], splits["val"], splits["test"]) == (1778, 305, 1568)
+    assert Counter(r["defect_category"] for r in rows if r["defects"]) == {
+        "logical": 561,
+        "visual": 432,
+    }
+    assert find_errors(rows, image_root=LOCO_ROOT) == []

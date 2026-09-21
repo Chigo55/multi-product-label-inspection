@@ -17,6 +17,17 @@ mvtec_ad:
   license: CC BY-NC-SA 4.0          # 상업 이용 금지. 벤치마크 전용 (#6)
   downloaded: 2026-09-21
 
+mvtec_loco:
+  version: "1.0"                    # 공식 validation → val (train을 떼지 않는다)
+  schema: v1.1
+  converter: src/utils/mvtec.py     # metadata 재생성: uv run experiments/build_metadata.py mvtec_loco
+  root: datasets/public/mvtec_loco
+  metadata: datasets/public/mvtec_loco/metadata.jsonl
+  source: https://www.mydrive.ch/shares/48237/1b9106ccdfbb09a0c414bd49fe44a14a/download/430647091-1646842701/mvtec_loco_anomaly_detection.tar.xz
+  sha256: 9e7c84dba550fd2e59d8e9e231c929c45ba737b6b6a6d3814100f54d63aae687
+  license: CC BY-NC-SA 4.0          # 상업 이용 금지. 벤치마크 전용 (#6)
+  downloaded: 2026-09-21
+
 visa:
   version: "1.0"                    # 공식 1cls split + train 정상 20% → val (schema §4.3)
   schema: v1.1

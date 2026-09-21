@@ -91,9 +91,30 @@ MVTec AD 15개 category 전체(5,354장 → train 2,903 / val 726 / test 1,725)�
 
 ---
 
+## 추가 — Public track 3종 연결 (#32, 2026-09-21)
+
+| 데이터셋 | 원본 → split | rows | 불량 | 라이선스 |
+|---|---|---:|---:|---|
+| MVTec AD v1.1 | train 20% → val | 5,354 | 1,258 (visual) | CC BY-NC-SA 4.0 |
+| MVTec LOCO v1.0 | 공식 validation → val | 3,651 | 993 (logical 561 / visual 432) | CC BY-NC-SA 4.0 |
+| VisA v1.0 | 공식 1cls, train 20% → val | 10,821 | 1,200 (visual, 복수 불량 → `defects[]`) | **CC BY 4.0** |
+
+세 데이터셋 모두 SHA256을 확인했고 검증기 오류는 0건이다. 공통 값은 `public_row()` 한 곳에서 만든다.
+
+- **val은 제품별로 20%를 뗀다.** 처음에는 VisA 전체에서 20%를 뽑아서 object별 비율이 20.7% 등으로 들쭉날쭉했다.
+  threshold를 제품별로 정하므로 제품별로 고쳤다.
+- **LOCO 배포본은 3,651장**(train 1,778 / val 305 / test 1,568)으로, 논문 표기로 기억하는 3,644장과 7장 다르다.
+  디스크 파일 수와 변환 결과는 일치한다. 논문 원문과의 대조는 #2에서 한다.
+- 평가에 **DER 분해(불량 분류·유형별)**를 추가했다. LOCO juice_bottle에 dummy로 돌려서 logical 142건과 visual 94건이
+  나뉘어 집계되는 것을 확인했다. logical 불량은 실제 불량이라 DER에 들어가는 것이 맞다. `expected_*`가 필요한
+  logical 검사 항목(라벨·OCR·barcode 비교)은 아직 지표가 없고(#37), public row는 `expected_*`가 전부 null이라 자동으로 빠진다.
+- `experiments/week02_mvtec_smoke.py`를 `experiments/build_metadata.py`로 대체했다. registry를 읽어서 데이터셋 전체를 변환하고,
+  검증 오류가 0건일 때만 파일을 쓴다.
+
+---
+
 ## Next
 
-- #32 MVTec LOCO / VisA 변환기 (#7에 남은 유일한 항목) (LOCO는 다운로드가 신청서 방식이라 직접 받는 링크 확인 필요)
 - Week 3 (#8): Pilot benchmark — Recipe 파일 형식, LOT 2개 이상 부여
 - 모델(PatchCore)은 **Week 4 Gate(#39) 통과 후**
 
@@ -112,5 +133,5 @@ val이 작을 때 분위수 threshold가 얼마나 흔들리는지(bottle val 42
 과검률 목표 F. GPU 환경(#5).
 
 다음 주말 첫 번째 할 일:
-#32 MVTec LOCO / VisA 변환기를 끝내고 Week 3 Pilot benchmark(#8)로 넘어간다.
+Week 3 Pilot benchmark(#8) — Recipe 파일 형식을 정하고 LOT을 2개 이상 부여한다.
 ```

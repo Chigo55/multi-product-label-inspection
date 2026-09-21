@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 아니라 RQ1~RQ6에 답하기 위해 존재한다. 주제는 다품종·다라벨 제조 환경의 Explainable Hybrid
 Inspection System이고, 시스템 출력은 `OK`/`NG`가 아니라 **판정 + 원인 + 근거**다.
 
-구현된 것은 평가 레일뿐이다: `src/utils/mvtec.py`(MVTec AD → JSONL), `src/utils/metadata.py`(JSONL 입출력·검증),
+구현된 것은 평가 레일뿐이다: `src/utils/mvtec.py`·`visa.py`(MVTec AD / LOCO / VisA → JSONL), `src/utils/metadata.py`(JSONL 입출력·검증·public 공통 row),
 `src/evaluation/metrics.py`(지표 정본), `src/utils/tracking.py`(MLflow). 모델은 아직 없다(Week 4 Gate).
 
 ## Commands
