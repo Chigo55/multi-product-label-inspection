@@ -106,10 +106,50 @@ def test_duplicate_sample_id() -> None:
     assert any("중복" in e for e in find_errors([normal(), normal()]))
 
 
-def test_reference_test_unit_leakage() -> None:
-    ref = normal(sample_id="u1/slot-1", unit_id="u1", split="reference")
-    test = normal(sample_id="u1/slot-2", unit_id="u1", split="test")
-    assert any("leakage" in e for e in find_errors([ref, test]))
+@pytest.mark.parametrize("other", ["train", "val", "reference"])
+def test_unit_belongs_to_one_split(other: str) -> None:
+    # schema §4.2-1: 같은 제품의 다른 라벨·카메라도 split을 나눌 수 없다
+    a = normal(sample_id="u1/slot-1", unit_id="u1", split=other)
+    b = normal(sample_id="u1/slot-2", unit_id="u1", split="test")
+    assert any("leakage" in e and "u1" in e for e in find_errors([a, b]))
+
+
+def test_same_unit_same_split_is_fine() -> None:
+    a = normal(sample_id="u1/slot-1", unit_id="u1")
+    b = normal(sample_id="u1/slot-2", unit_id="u1")
+    assert find_errors([a, b]) == []
+
+
+@pytest.mark.parametrize("other", ["train", "val", "reference"])
+def test_test_lot_is_disjoint_from_other_splits(other: str) -> None:
+    # schema §4.2-2: 과거 LOT으로 학습·조정·등록하고 미래 LOT을 검사한다
+    a = normal(sample_id="u1/-", unit_id="u1", split=other, production_lot="L1")
+    b = normal(sample_id="u2/-", unit_id="u2", split="test", production_lot="L1")
+    assert any("LOT" in e and "L1" in e for e in find_errors([a, b]))
+
+
+def test_lot_rule_ignores_null_and_non_test_overlap() -> None:
+    rows = [
+        normal(sample_id="u1/-", unit_id="u1", split="train", production_lot="L1"),
+        normal(sample_id="u2/-", unit_id="u2", split="val", production_lot="L1"),
+        normal(sample_id="u3/-", unit_id="u3", split="train"),
+        normal(sample_id="u4/-", unit_id="u4", split="test"),  # public track: LOT null
+    ]
+    assert find_errors(rows) == []
+
+
+@pytest.mark.parametrize("split", ["train", "val", "reference"])
+def test_unknown_label_only_in_test(split: str) -> None:
+    assert any(
+        "is_known_label" in e for e in find_errors([normal(split=split, is_known_label=False)])
+    )
+
+
+@pytest.mark.parametrize("split", ["train", "val"])
+def test_unknown_defect_only_in_test(split: str) -> None:
+    assert any(
+        "is_known_defect" in e for e in find_errors([defect(split=split, is_known_defect=False)])
+    )
 
 
 @pytest.mark.parametrize("split", ["train", "val", "reference"])

@@ -1,4 +1,4 @@
-"""metadata.jsonl 입출력과 검증. 규칙의 정본은 datasets/schema.md (v0.2.1).
+"""metadata.jsonl 입출력과 검증. 규칙의 정본은 datasets/schema.md (v1.0).
 
 평가 코드는 원본 데이터셋을 모르고 이 파일만 읽는다 (docs/adr/0006).
 """
@@ -46,11 +46,25 @@ def find_errors(rows: list[dict[str, Any]], image_root: Path | None = None) -> l
             errors.append(f"{r.get('sample_id')}: sample_id 중복")
         seen.add(r.get("sample_id"))
 
-    # schema §4: 같은 Product Unit이 reference와 test에 동시에 있으면 안 된다
-    units = defaultdict(set)
+    # schema §4.2-1: 한 Product Unit은 정확히 한 split에만 속한다
+    splits_of = defaultdict(set)
     for r in rows:
-        units[r.get("split")].add(r.get("unit_id"))
-    errors += [f"{u}: reference/test leakage" for u in sorted(units["reference"] & units["test"])]
+        splits_of[r.get("unit_id")].add(str(r.get("split")))
+    errors += [
+        f"{u}: leakage — 한 unit이 여러 split에 있다 {sorted(s)}"
+        for u, s in splits_of.items()
+        if len(s) > 1
+    ]
+
+    # schema §4.2-2: test의 LOT은 train/val/reference와 겹치지 않는다 (LOT 없는 row는 제외)
+    lots = defaultdict(set)
+    for r in rows:
+        if r.get("production_lot") is not None:
+            lots[r.get("split") == "test"].add(r["production_lot"])
+    errors += [
+        f"{lot}: LOT leakage — test와 다른 split에 함께 있다"
+        for lot in sorted(lots[True] & lots[False])
+    ]
     return errors
 
 
@@ -98,8 +112,13 @@ def _row_errors(r: dict[str, Any], image_root: Path | None) -> list[str]:
 
     if r.get("split") == "reference" and kind != "normal":
         errors.append("reference split은 정상만")
-    if "unknown_visual" in types and r.get("split") != "test":
-        errors.append("unknown_visual은 test에만 (학습·calibration 금지)")
+    if r.get("split") != "test":  # schema §4.2-3, 4: Unknown은 학습·calibration·reference 금지
+        if "unknown_visual" in types:
+            errors.append("unknown_visual은 test에만")
+        if r.get("is_known_label") is False:
+            errors.append("is_known_label=false(E3)는 test에만")
+        if r.get("is_known_defect") is False:
+            errors.append("is_known_defect=false(E4)는 test에만")
     if image_root is not None and not (image_root / str(r.get("image_path"))).is_file():
         errors.append(f"이미지 파일 없음 {r.get('image_path')}")
     return errors

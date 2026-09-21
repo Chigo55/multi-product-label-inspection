@@ -1,7 +1,7 @@
-# Dataset Schema v0.2.1
+# Dataset Schema v1.0
 
 > 작성일: 2026-09-12 (Week 1)
-> 상태: **v0.2.1 — 변경 가능.** 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
+> 상태: **v1.0 — Week 2 확정.** 필드를 바꾸면 버전을 올리고 변환기·검증기를 함께 고친다. 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
 > 목적: Public benchmark(MVTec AD/LOCO, VisA ...)와 자체 Multi-Product Multi-Label benchmark를
 > **동일한 metadata 형식**으로 다뤄서, 평가 코드를 한 번만 만들면 되게 한다.
 
@@ -123,27 +123,59 @@ Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매
 
 | 필드 | 값 | 이유 |
 |---|---|---|
-| `unit_id` | `{dataset}/{product_id}/{split}/{원본폴더}_{파일stem}` (예: `mvtec_ad/bottle/test/broken_large_000`) | MVTec은 결함 폴더마다 `000`부터 다시 센다. 폴더명을 넣어야 고유하고 원본 추적도 된다 |
+| `unit_id` | `{dataset}/{product_id}/{원본split}/{원본폴더}_{파일stem}` (예: `mvtec_ad/bottle/test/broken_large_000`) | MVTec은 결함 폴더마다 `000`부터 다시 센다. 폴더명을 넣어야 고유하고 원본 추적도 된다. `{원본split}`은 원본 디렉터리라 val로 옮겨져도 ID는 그대로다 |
 | `image_path` | 변환 root(예: `datasets/public/mvtec_ad`) 기준 상대 경로. `metadata.jsonl`도 그 root에 둔다 | |
 | `camera_id` | `CAM01` | 단일 카메라 |
 | `expected_*` / `actual_*` / `is_known_label` | `null` | Recipe도 Label Identity도 없다 → Logical·Identity 지표에서 자동 제외 |
 | `is_known_defect` | `true` | 원본 결함 폴더는 설계 시점에 정의된 유형이다 |
 | `defect_type` (정상) | `null` | taxonomy enum에 정상용 값이 없다 |
 | `defect_severity` / `defects[].severity` (불량) | `null` | **Severity는 Recipe가 정한다**(`docs/adr/0004`). public track에는 Recipe가 없으므로 **Critical Escape Rate를 계산하지 않는다.** Defect Escape Rate는 계산한다 |
-| `split` | 원본 그대로(`train`/`test`) | MVTec AD에는 val이 없다. val/calibration 분할은 §4에서 확정 |
+| `split` | `train`의 20% → `val`, 나머지는 원본 그대로 | MVTec AD에는 val이 없다 → §4.3 |
 
 > 변환 시 `train`에 불량 폴더가 있으면 **에러로 멈춘다**(normal-only 전제 위반). 구현: `src/utils/mvtec.py`.
 
 ---
 
-## 4. Split 정책 (초안 — Week 2에서 확정)
+## 4. Split 정책 (v1.0 확정, #30)
 
-- **Leakage 금지 규칙**: 동일 Product Unit(`unit_id`) 또는 동일 LOT의 이미지가 `reference`와 `test`에
-  동시에 들어가지 않는다. `unit_id`가 있으므로 이 규칙은 기계적으로 검증할 수 있다.
-- `reference`는 **정상만** 포함한다.
-- Unknown label(E3)용 라벨은 `reference`에 prototype을 만들지 않는다.
-- Unknown defect(E4)용 불량 유형은 threshold calibration 데이터에 포함하지 않는다.
-- Domain shift(E6)는 LOT / 조명 / 카메라 기준으로 test를 분리한다.
+검증기 `src/utils/metadata.py`가 아래 ✔ 규칙을 전부 기계적으로 검사한다.
+
+### 4.1 split 정의
+
+| split | 넣는 것 | 쓰는 곳 | 넣으면 안 되는 것 |
+|---|---|---|---|
+| `train` | 정상 | 모델 학습 (normal-only) | 불량 — MVTec 변환기는 에러로 멈춘다 |
+| `val` | 정상 (+ Known defect) | **threshold calibration 전용** | ✔ Unknown label, ✔ Unknown defect, ✔ `unknown_visual` |
+| `test` | 정상 + 모든 불량 | **최종 보고 전용** | — (threshold·하이퍼파라미터 결정에 쓰지 않는다) |
+| `reference` | 정상 | Onboarding용 prototype (E2) | ✔ 불량, ✔ Unknown label(E3) |
+
+### 4.2 Leakage 규칙
+
+1. ✔ **한 `unit_id`는 정확히 한 split에만 속한다.** 같은 제품의 다른 라벨·카메라 이미지도 split을 나눌 수 없다.
+2. ✔ **`test`의 `production_lot`은 `train`/`val`/`reference`와 겹치지 않는다.** 과거 LOT으로 학습·조정·등록하고
+   미래 LOT을 검사하는 현장 조건을 따른다. LOT이 `null`인 row(public track)는 검사하지 않는다.
+   따라서 자체 benchmark는 **LOT을 2개 이상** 부여해야 한다.
+3. ✔ `is_known_label=false` 샘플은 `test`에만 둔다 (E3). Unknown label은 prototype을 만들지 않는다.
+4. ✔ `is_known_defect=false` 샘플과 `unknown_visual`은 `test`에만 둔다 (E4).
+
+### 4.3 val이 없는 public 데이터셋 — 정상 분위수 calibration
+
+MVTec AD는 `train`(정상)과 `test`만 있다. **`train` 정상의 20%를 `val`로 떼고, val 정상 score 분포만으로
+threshold를 정한다.** 공개 `test`는 건드리지 않으므로 선행 연구와 AUROC를 비교할 수 있다.
+
+- 떼는 샘플은 `sha256(unit_id)` 순서로 고른다 — Python 버전이나 seed와 무관하게 항상 같다.
+- threshold 규칙은 `evaluation_protocol.md` §6 (`normal_ng_rate` f, `normal_review_rate` r).
+- 한계: calibration에서 불량을 보지 않으므로 DER은 test에서 처음 확인된다. val이 작으면 분위수 해상도가
+  거칠다 (bottle val 42장 → 약 2.4% 단위, f=1%는 사실상 val 최고 점수).
+
+검토한 대안: test를 val/test로 쪼개기(공개 test 비교 불가, 불량 수 절반), threshold 없이 AUROC만(DER 계산 불가).
+
+### 4.4 Domain shift (E6)
+
+- test를 shift 요인별 subset으로 나누고 **`experiment_tags`로 표시한다** (`E6-lot`, `E6-camera`, `E6-light` …).
+  조명·배경·반사 전용 필드는 두지 않는다. Pilot에서 촬영 조건을 체계적으로 바꾸게 되면 필드 추가를 검토한다.
+- threshold는 in-domain `val`에서 정한 값을 **재조정 없이** 그대로 쓴다 — 재조정하면 shift 효과가 가려진다.
+- 4.2-2 때문에 모든 test LOT은 이미 새 LOT이다. `E6-lot`은 인쇄 배치·공급사 변경처럼 **큰 LOT 변화**를 뜻한다.
 
 ---
 
@@ -154,3 +186,5 @@ Public benchmark에는 product/label 개념이 없으므로 다음과 같이 매
 | v0.1 | 2026-09-12 | 최초 정의. 필드 26개, public 매핑 규칙, split 정책 초안 |
 | v0.2 | 2026-09-12 | `unit_id` 추가(Product-level 집계 키), `label_id`→`label_slot` 재정의, `defects[]`를 정식 필드로 선언 |
 | v0.2.1 | 2026-09-21 | §3.1 public track 공통 값 명시(`unit_id` seq 형식, `image_path` 기준, severity `null` → public track은 CDER 미계산). 필드 변경 없음 |
+| v0.3 | 2026-09-21 | §4 split/leakage **제안 초안**(#30): split별 용도, unit 단일 split 규칙, val 없는 public 데이터 calibration 안 A/B/C, E6 분리. 필드 변경 없음 |
+| **v1.0** | 2026-09-21 | **확정**(#30). unit 단일 split, test LOT 분리(test ↔ 나머지 전부), Unknown label/defect test 격리, public val = train 정상 20%(sha256 순서) + 정상 분위수 calibration, E6는 태그로 표시. 필드 변경 없음 |

@@ -18,12 +18,11 @@ dataset:
 model:
   name: dummy
 
-# 고정값. calibration 하지 않는다 — MVTec AD에는 val split이 없다 (#30)
+# val 정상 score 분위수로 threshold를 정한다 (schema §4.3 안 A, evaluation_protocol §6)
 decision:
-  thresholds:
-    ok: 0.3
-    ng: 0.7
-  calibration_split: null
+  calibration_split: val
+  normal_ng_rate: 0.01
+  normal_review_rate: 0.10
 
 latency:
   device: cpu

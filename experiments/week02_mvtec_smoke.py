@@ -1,8 +1,8 @@
 """Week 1 마감 — Public dataset 하나 읽기 (#4).
 
-모델은 돌리지 않는다. 데이터가 실제로 schema v0.2까지 흐르는지만 확인한다.
+모델은 돌리지 않는다. 데이터가 실제로 schema v1.0까지 흐르는지만 확인한다.
 
-    이미지 1장 열기 → train/test 샘플 수 출력 → metadata.jsonl 생성
+    이미지 1장 열기 → train/val/test 샘플 수 출력 → metadata.jsonl 생성
 
 실행:
     uv run experiments/week02_mvtec_smoke.py            # bottle
@@ -42,7 +42,7 @@ def main(categories: list[str]) -> None:
     for category in categories:
         mine = [r for r in rows if r["product_id"] == category]
         print(f"[{category}]")
-        for split in ("train", "test"):
+        for split in ("train", "val", "test"):
             kinds = Counter(r["normal_or_defect"] for r in mine if r["split"] == split)
             print(f"  {split:5s}  normal={kinds['normal']:4d}  defect={kinds['defect']:4d}")
         types = Counter(r["defect_type"] for r in mine if r["defects"])
@@ -51,7 +51,9 @@ def main(categories: list[str]) -> None:
 
     write_jsonl(rows, OUT_PATH)
     print(f"metadata: {OUT_PATH.relative_to(REPO_ROOT).as_posix()}  ({len(rows)} rows)")
-    print("평가 연결 지점: configs/*.yaml 의 dataset.metadata 에 위 경로를 넣는다 (Week 4)")
+    print(
+        "다음: uv run experiments/week02_pipeline_check.py (datasets/registry.yaml이 이 경로를 가리킨다)"
+    )
 
 
 if __name__ == "__main__":

@@ -7,8 +7,8 @@
 # - 실험 config의 dataset.name 이 이 파일의 키를 가리킨다.
 
 mvtec_ad:
-  version: "1.0"
-  schema: v0.2.1                    # datasets/schema.md
+  version: "1.1"                    # 1.0 → 1.1: train 20%를 val로 분리 (schema v1.0 §4.3)
+  schema: v1.0                      # datasets/schema.md
   converter: src/utils/mvtec.py     # metadata 재생성: uv run experiments/week02_mvtec_smoke.py
   root: datasets/public/mvtec_ad
   metadata: datasets/public/mvtec_ad/metadata.jsonl

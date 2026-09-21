@@ -103,6 +103,20 @@ def test_label_identity_and_expected_fields_are_null(fake_root: Path) -> None:
                 assert row[key] is None, key
 
 
+def test_val_is_deterministic_20_percent_of_train(tmp_path: Path) -> None:
+    # schema §4.3 안 A: train 정상에서 unit 단위로 20%를 val로 뗀다
+    for i in range(10):
+        _touch(tmp_path / "bottle" / "train" / "good" / f"{i:03d}.png")
+    _touch(tmp_path / "bottle" / "test" / "good" / "000.png")
+    val = [r for r in build_metadata(tmp_path, "bottle") if r["split"] == "val"]
+    assert len(val) == 2
+    assert all(r["normal_or_defect"] == "normal" for r in val)
+    # unit_id는 원본 폴더 기준이다 — split 정책이 바뀌어도 ID는 바뀌지 않는다
+    assert all("/train/good_" in r["unit_id"] for r in val)
+    again = [r for r in build_metadata(tmp_path, "bottle") if r["split"] == "val"]
+    assert again == val
+
+
 def test_rejects_defect_folder_in_train(fake_root: Path) -> None:
     # normal-only 학습 전제가 깨지는 데이터는 조용히 변환하지 않는다
     _touch(fake_root / "bottle" / "train" / "broken_large" / "000.png")
@@ -119,15 +133,18 @@ def test_missing_category_raises(fake_root: Path) -> None:
 @pytest.mark.skipif(not (MVTEC_ROOT / "bottle").is_dir(), reason="MVTec AD 미다운로드")
 def test_real_bottle_counts() -> None:
     # MVTec AD 논문(IJCV 2021) Table 1: bottle train 209 / test good 20 / test defect 63
+    # train 209 중 20%(42)를 val로 뗀다 (schema §4.3)
     rows = build_metadata(MVTEC_ROOT, "bottle")
     count = {
         (split, kind): sum(r["split"] == split and r["normal_or_defect"] == kind for r in rows)
-        for split in ("train", "test")
+        for split in ("train", "val", "test")
         for kind in ("normal", "defect")
     }
     assert count == {
-        ("train", "normal"): 209,
+        ("train", "normal"): 167,
         ("train", "defect"): 0,
+        ("val", "normal"): 42,
+        ("val", "defect"): 0,
         ("test", "normal"): 20,
         ("test", "defect"): 63,
     }

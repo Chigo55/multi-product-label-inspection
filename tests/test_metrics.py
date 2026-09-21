@@ -5,9 +5,10 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+import numpy as np
 import pytest
 
-from src.evaluation.metrics import NG, OK, REVIEW, decide, evaluate, rate
+from src.evaluation.metrics import NG, OK, REVIEW, calibrate, decide, evaluate, rate
 
 
 def _rows_preds(cases: Sequence[tuple[str, str, str | None]]) -> tuple[list[dict], list[dict]]:
@@ -181,3 +182,38 @@ def test_values_are_finite_floats() -> None:
     rows, preds = _rows_preds([("normal", OK, None), ("defect", NG, None)])
     m = evaluate(rows, preds)
     assert all(math.isfinite(v) for v in m["defect_escape_rate"]["ci95"])
+
+
+# --- §6 threshold calibration: val 정상 score 분위수 (schema §4.3 안 A) ---
+
+
+def test_calibrate_quantiles() -> None:
+    t_ok, t_ng = calibrate(
+        [float(s) for s in range(100)], normal_ng_rate=0.01, normal_review_rate=0.1
+    )
+    assert (t_ok, t_ng) == (90.0, 99.0)
+
+
+def test_calibrate_small_val_uses_max_for_ng() -> None:
+    # val 42장이면 1% 해상도가 없다 → t_ng = 최고 점수 (val 정상은 하나도 NG가 아님)
+    scores = [i / 42 for i in range(42)]
+    assert calibrate(scores, normal_ng_rate=0.01, normal_review_rate=0.1)[1] == max(scores)
+
+
+def test_calibrated_val_ng_rate_never_exceeds_target() -> None:
+    rng = np.random.default_rng(0)
+    for n in (5, 42, 167, 1000):
+        scores = rng.random(n).tolist()
+        t_ok, t_ng = calibrate(scores, normal_ng_rate=0.05, normal_review_rate=0.2)
+        decisions = [decide(s, t_ok, t_ng) for s in scores]
+        assert decisions.count(NG) <= 0.05 * n
+        assert t_ok <= t_ng
+
+
+@pytest.mark.parametrize(
+    ("scores", "f", "r"),
+    [([], 0.01, 0.1), ([0.5], 0.2, 0.1), ([0.5], -0.1, 0.1), ([0.5], 0.01, 1.5)],
+)
+def test_calibrate_rejects_bad_input(scores: list[float], f: float, r: float) -> None:
+    with pytest.raises(ValueError):
+        calibrate(scores, normal_ng_rate=f, normal_review_rate=r)

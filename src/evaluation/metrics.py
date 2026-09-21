@@ -11,8 +11,10 @@ REVIEW 처리 규칙 (ADR 0002):
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
 from scipy.stats import binomtest
 from sklearn.metrics import average_precision_score, roc_auc_score
 
@@ -32,6 +34,25 @@ def decide(score: float, t_ok: float, t_ng: float) -> str:
     if score > t_ng:
         return NG
     return REVIEW
+
+
+def calibrate(
+    normal_scores: Sequence[float], normal_ng_rate: float, normal_review_rate: float
+) -> tuple[float, float]:
+    """val 정상 score만으로 (t_ok, t_ng)를 정한다 (evaluation_protocol §6, schema §4.3 안 A).
+
+    t_ng = Q(1-f): val 정상 중 NG(score > t_ng)는 f 이하다 — f가 목표 과검률.
+    t_ok = Q(1-r): val 정상 중 약 r이 REVIEW 이상으로 간다.
+    Q는 관측값 중에서 고르는 경험 분위수(method="higher")라 val이 작으면 해상도가 거칠다.
+    """
+    if len(normal_scores) == 0:
+        raise ValueError("calibration용 정상 score가 없다")
+    if not 0 <= normal_ng_rate <= normal_review_rate <= 1:
+        raise ValueError(f"0 <= f({normal_ng_rate}) <= r({normal_review_rate}) <= 1 이어야 한다")
+    t_ok, t_ng = np.quantile(
+        normal_scores, [1 - normal_review_rate, 1 - normal_ng_rate], method="higher"
+    )
+    return float(t_ok), float(t_ng)
 
 
 def rate(k: int, n: int) -> dict[str, Any]:
