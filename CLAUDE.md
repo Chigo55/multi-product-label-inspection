@@ -8,8 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 아니라 RQ1~RQ6에 답하기 위해 존재한다. 주제는 다품종·다라벨 제조 환경의 Explainable Hybrid
 Inspection System이고, 시스템 출력은 `OK`/`NG`가 아니라 **판정 + 원인 + 근거**다.
 
-현재 `src/`는 빈 스켈레톤이다(`__init__.py`만 존재). 첫 실제 구현은 Week 2의
-`src/utils/mvtec.py` loader다.
+실제 구현은 `src/utils/mvtec.py`(MVTec AD → schema JSONL 변환기)뿐이고 나머지 `src/` 하위는 빈 스켈레톤이다.
 
 ## Commands
 
@@ -28,15 +27,13 @@ uv run ruff check . --fix        # lint (+ 자동 수정)
 uv run ruff format .             # format (black 대체 — black은 설치하지 않는다)
 uv run pyrefly check             # type check
 
-uv run experiments/week02_mvtec_smoke.py
+uv run experiments/week02_mvtec_smoke.py   # MVTec AD를 datasets/public/mvtec_ad/ 에 풀어 둔 뒤
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
 ```
 
 PyTorch는 하드웨어 종속이라 `pyproject.toml`에 고정하지 않는다:
 `uv add torch torchvision --index https://download.pytorch.org/whl/cu124` (CPU는 `/cpu`).
 
-`tests/`가 비어 있는 동안 `pytest`는 종료 코드 5("no tests collected")를 낸다. 첫 테스트가
-생기면 사라진다.
 
 ## Agent skills
 

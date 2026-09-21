@@ -103,7 +103,7 @@ UI         : http://127.0.0.1:5000 (HTTP 200, run 조회 확인)
 - [x] Literature Matrix
 - [ ] MVTec LOCO AD 정리 ← 초안 있음, **원문 훑고 확정**
 - [ ] PatchCore 정리 ← 초안 있음, **원문 훑고 확정**
-- [ ] Public dataset 하나 읽기 성공 (내일)
+- [x] Public dataset 하나 읽기 성공 — 2026-09-21, MVTec AD bottle 292 rows → schema v0.2.1 JSONL (#4)
 - [x] `Week01.md` 연구노트
 - [x] (추가) uv 전환 + pytest/ruff/pyrefly
 - [x] (추가) `CONTEXT.md` 용어집 + ADR 7건
@@ -146,7 +146,7 @@ v0.2로 올렸고, 결정들을 주간 노트가 아니라 `CONTEXT.md`와 `docs
 
 아직 불확실한 것:
 (1) GPU 환경이 없다 — Week 5~6 baseline 전에 확정 필요.
-(2) MVTec AD/LOCO 및 DINOv2 weights의 상업적 이용 라이선스 미확인.
+(2) ~~MVTec AD/LOCO 및 DINOv2 weights의 상업적 이용 라이선스 미확인.~~ → 2026-09-21 확인 (#6, `literature_matrix.md`)
 (3) PatchCore류를 30~60개 label identity로 확장할 때의 memory/latency 비용이 미지수.
 (4) 자체 benchmark를 synthetic으로 어디까지 만들 수 있는지(특히 OCR/Barcode-only 차이) 미검증.
 
