@@ -1,4 +1,4 @@
-"""Pilot benchmark 생성 (#33) — Recipe → 정상 이미지 + metadata.jsonl.
+"""Pilot benchmark 생성 (#33, #34) — Recipe → 정상·불량 이미지 + metadata.jsonl.
 
     uv run experiments/build_pilot.py
 
@@ -9,7 +9,7 @@
 그래서 registry의 `sha256`은 원본 아카이브 대신 **Recipe 파일 해시**다. 해시가 달라지면
 데이터가 달라진 것이므로 `version`을 올리라고 여기서 막는다.
 
-불량은 아직 없다 (#34). 지금은 test split도 전부 정상이다.
+불량 unit은 정상 unit 뒤에 따로 붙고, unit마다 Label Slot 한 곳만 불량이다 (#34).
 """
 
 from __future__ import annotations
@@ -70,7 +70,12 @@ def report(recipe: dict, rows: list[dict]) -> None:
     for product_id, product in recipe["products"].items():
         n_slots = len(product["slots"])
         f = 1 - (1 - target) ** (1 / n_slots)
-        n_val = counts[(product_id, "val")]
+        n_val = sum(
+            r["product_id"] == product_id
+            and r["split"] == "val"
+            and r["normal_or_defect"] == "normal"
+            for r in rows
+        )
         mark = "ok" if n_val >= 1 / f else f"거칠다 — {round(1 / f)} row 이상 필요"
         print(f"  {product_id} ({product['name']}, L={n_slots} slot)")
         for split in ("reference", "train", "val", "test"):
@@ -85,9 +90,20 @@ def report(recipe: dict, rows: list[dict]) -> None:
     print(
         f"  미등록 라벨(E3): {sorted(unknown)} — {sum(r['is_known_label'] is False for r in rows)} row, test 전용"
     )
+    identities = {r["actual_label_id"] for r in rows} - {None}
     print(
-        f"  Label Identity {len({r['actual_label_id'] for r in rows})}종 / LOT {sorted({r['production_lot'] for r in rows})}"
+        f"  Label Identity {len(identities)}종 / LOT {sorted({r['production_lot'] for r in rows})}"
     )
+
+    # 불량: 유형별 val / test row 수와 최종 severity 분포 (override 적용 후)
+    defects = [r for r in rows if r["normal_or_defect"] == "defect"]
+    print(f"  불량 {len(defects)} row (유형 {len({r['defect_type'] for r in defects})}종)")
+    for t in dict.fromkeys(r["defect_type"] for r in defects):
+        mine = [r for r in defects if r["defect_type"] == t]
+        n_val = sum(r["split"] == "val" for r in mine)
+        sev = dict(Counter(r["defect_severity"] for r in mine))
+        known = "" if mine[0]["is_known_defect"] else "  ← hold-out (E4)"
+        print(f"    {t:20s} val {n_val:3d} | test {len(mine) - n_val:3d} | {sev}{known}")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,8 @@ sample_id 해시로 seed를 잡으므로 **생성 순서와 무관하게 항상 
 원근 워프 → 조명 그라디언트 → blur → 센서 노이즈를 준다. 그 세기가 `NUISANCE`이고,
 E6(domain shift)는 이 값을 키운 subset으로 만든다 (schema §4.4).
 
-불량은 여기서 만들지 않는다 (#34, `src/utils/synthetic.py`).
+불량은 정상 라벨에 가하는 변형으로 만든다 (#34). 변형 자체는 `src/utils/synthetic.py`에 있고,
+여기서는 어느 unit의 어느 자리에 넣을지와 metadata 기록만 한다.
 """
 
 from __future__ import annotations
@@ -22,6 +23,9 @@ import numpy as np
 from barcode.writer import ImageWriter
 from matplotlib import get_data_path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+from src.utils import synthetic
+from src.utils.metadata import SEVERITY_RANK
 
 # 제품 좌표계(mm) ↔ 픽셀. ROI 256px = 약 43mm 시야.
 PX_PER_MM = 6.0
@@ -195,15 +199,19 @@ def apply_nuisance(
 
 
 def render_roi(
-    spec: dict[str, Any],
+    spec: dict[str, Any] | None,
     body: str,
     roi: tuple[int, int],
     offset_mm: tuple[float, float],
     theta_deg: float,
     rng: np.random.Generator,
     strength: dict[str, float] | None = None,
+    label_fx: synthetic.LabelFx | None = None,
 ) -> Image.Image:
     """Label Slot 하나의 ROI 이미지. 라벨을 제품 표면에 붙이고 촬영 조건을 입힌다.
+
+    `spec`이 None이면 라벨이 없는 자리다(missing_label). `label_fx`는 라벨 위에만 얹는 외관 불량이다 —
+    배경까지 더럽히면 "라벨 불량"이 아니라 "사진 불량"이 된다.
 
     원근 워프는 프레임 밖을 끌어온다 — 가장자리에 검은 쐐기가 생기지 않도록 여유분까지 그린 뒤
     가운데를 잘라낸다.
@@ -212,12 +220,18 @@ def render_roi(
     work = (roi[0] + 2 * pad, roi[1] + 2 * pad)
     canvas = body_patch(body, work, rng)
 
-    # 회전하면 네 귀퉁이가 라벨 밖이 된다 — alpha로 비워 두고 mask로 붙여야 검은 삼각형이 안 생긴다
-    label = render_label(spec).convert("RGBA")
-    label = label.rotate(theta_deg, Image.Resampling.BICUBIC, expand=True, fillcolor=(0, 0, 0, 0))
-    x = round(work[0] / 2 - label.width / 2 + offset_mm[0] * PX_PER_MM)
-    y = round(work[1] / 2 - label.height / 2 + offset_mm[1] * PX_PER_MM)
-    canvas.paste(label, (x, y), label)
+    if spec is not None:
+        label = render_label(spec)
+        if label_fx is not None:
+            label = label_fx(label, rng)
+        # 회전하면 네 귀퉁이가 라벨 밖이 된다 — alpha로 비워 두고 mask로 붙여야 검은 삼각형이 안 생긴다
+        label = label.convert("RGBA")
+        label = label.rotate(
+            theta_deg, Image.Resampling.BICUBIC, expand=True, fillcolor=(0, 0, 0, 0)
+        )
+        x = round(work[0] / 2 - label.width / 2 + offset_mm[0] * PX_PER_MM)
+        y = round(work[1] / 2 - label.height / 2 + offset_mm[1] * PX_PER_MM)
+        canvas.paste(label, (x, y), label)
 
     out = apply_nuisance(canvas, rng, strength)
     return out.crop((pad, pad, pad + roi[0], pad + roi[1]))
@@ -226,13 +240,17 @@ def render_roi(
 # ------------------------------------------------------------
 # metadata row 생성
 # ------------------------------------------------------------
-def _unit_plan(
-    product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, Any]
-) -> list[tuple[str, int, str, str]]:
-    """제품 1종의 (split, seq, revision, lot) 목록.
+Plan = tuple[str, int, str, str, str | None]  # (split, seq, revision, lot, defect_type)
 
-    미등록 라벨이 든 revision은 `test`에만 배정한다 (schema §4.2-3). LOT도 test와 나머지를
-    분리한다 (§4.2-2). seq는 제품 안에서 연속이라 unit_id가 split을 가로질러 고유하다.
+
+def _unit_plan(product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, Any]) -> list[Plan]:
+    """제품 1종의 unit 목록. defect_type이 None이면 정상 unit이다.
+
+    - 미등록 라벨이 든 revision은 `test`에만 배정한다 (schema §4.2-3). 불량 unit에는 쓰지 않는다 —
+      E3(미등록 라벨)와 불량이 한 unit에 겹치면 둘 다 해석할 수 없다.
+    - LOT도 test와 나머지를 분리한다 (§4.2-2).
+    - 불량 unit은 정상 unit **뒤에** 이어 붙인다. 그래야 정상 unit의 seq·그림이 불량 설정과 무관하게 유지된다.
+    - hold-out 유형(E4)은 val에 넣지 않는다 — calibration에서 본 적 없는 불량이어야 한다.
     """
     known_revs: list[str] = []
     unknown_revs: list[str] = []
@@ -240,33 +258,67 @@ def _unit_plan(
         has_unknown = any(not labels[i].get("known", True) for i in slots.values())
         (unknown_revs if has_unknown else known_revs).append(rev)
 
+    def lots_of(split: str) -> list[str]:
+        return cfg["lots"]["test"] if split == "test" else cfg["lots"]["fit"]
+
     per_split = cfg["units_per_product"]
     n_unknown = cfg["unknown_units_per_product"] if unknown_revs else 0
-    plan: list[tuple[str, int, str, str]] = []
+    plan: list[Plan] = []
     seq = 0
     for split in ("reference", "train", "val", "test"):
-        lots = cfg["lots"]["test"] if split == "test" else cfg["lots"]["fit"]
+        lots = lots_of(split)
         total = per_split[split]
         n_known = total - n_unknown if split == "test" else total
         for i in range(total):
             revs = known_revs if i < n_known else unknown_revs
-            plan.append((split, seq, revs[i % len(revs)], lots[seq % len(lots)]))
+            plan.append((split, seq, revs[i % len(revs)], lots[seq % len(lots)], None))
             seq += 1
+
+    defects = cfg.get("defects") or {}
+    types = defects.get("types", [])
+    seen = [t for t in types if t not in defects.get("holdout", [])]
+    for split, split_types, n in (
+        ("val", seen, defects.get("val_units_per_type", 0)),
+        ("test", types, defects.get("test_units_per_type", 0)),
+    ):
+        lots = lots_of(split)
+        for defect_type in split_types:
+            for i in range(n):
+                plan.append(
+                    (
+                        split,
+                        seq,
+                        known_revs[i % len(known_revs)],
+                        lots[seq % len(lots)],
+                        defect_type,
+                    )
+                )
+                seq += 1
     return plan
 
 
-def _normal_row(
-    *, sample_id: str, unit_id: str, product_id: str, label_slot: str, image_path: str,
-    identity: str, spec: dict[str, Any], expected_position: dict[str, Any],
-    actual_position: dict[str, Any], lot: str, revision: str, split: str,
-) -> dict[str, Any]:  # fmt: skip
-    """정상 row. Recipe가 요구한 라벨이 허용 오차 안에 붙어 있다 → expected == actual.
+def _barcode(spec: dict[str, Any] | None) -> dict[str, str] | None:
+    value = spec.get("barcode") if spec else None
+    return {"type": BARCODE_TYPE, "value": value} if value else None
 
+
+def _row(
+    *, sample_id: str, unit_id: str, product_id: str, label_slot: str, image_path: str,
+    expected_id: str, expected_spec: dict[str, Any], actual_id: str | None,
+    actual_spec: dict[str, Any] | None, expected_position: dict[str, Any],
+    actual_position: dict[str, Any] | None, defects: list[dict[str, str]],
+    is_known_defect: bool, lot: str, revision: str, split: str,
+) -> dict[str, Any]:  # fmt: skip
+    """row 1개. `expected_*`는 Recipe에서, `actual_*`는 실제로 그린 것에서 온다.
+
+    정상이면 Recipe가 요구한 라벨이 허용 오차 안에 붙어 있다 → expected == actual (위치만 흔들림).
     미등록 라벨(u-*)도 **정상**이다. Recipe가 그 라벨을 요구하고 실제로 그게 붙어 있기 때문이다.
     다른 점은 prototype이 없다는 것뿐이고, 그래서 `is_known_label=false`로만 표시한다 (E3).
     """
-    barcode_value = spec.get("barcode")
-    barcode_json = {"type": BARCODE_TYPE, "value": barcode_value} if barcode_value else None
+    top = max(defects, key=lambda d: SEVERITY_RANK[d["severity"]]) if defects else None
+    category = "none"
+    if top:
+        category = "visual" if top["type"] in synthetic.VISUAL_TYPES else "logical"
     return {
         "sample_id": sample_id,
         "unit_id": unit_id,
@@ -274,21 +326,21 @@ def _normal_row(
         "label_slot": label_slot,
         "camera_id": "CAM01",
         "image_path": image_path,
-        "expected_label_id": identity,
-        "actual_label_id": identity,
-        "expected_text": dict(spec["text"]),
-        "actual_text": dict(spec["text"]),
-        "expected_barcode": barcode_json,
-        "actual_barcode": barcode_json,
+        "expected_label_id": expected_id,
+        "actual_label_id": actual_id,
+        "expected_text": dict(expected_spec["text"]),
+        "actual_text": dict(actual_spec["text"]) if actual_spec else None,
+        "expected_barcode": _barcode(expected_spec),
+        "actual_barcode": _barcode(actual_spec),
         "expected_position": expected_position,
         "actual_position": actual_position,
-        "normal_or_defect": "normal",
-        "defect_category": "none",
-        "defect_type": None,
-        "defect_severity": "none",
-        "defects": [],
-        "is_known_label": spec.get("known", True),
-        "is_known_defect": True,
+        "normal_or_defect": "defect" if defects else "normal",
+        "defect_category": category,
+        "defect_type": top["type"] if top else None,
+        "defect_severity": top["severity"] if top else "none",
+        "defects": defects,
+        "is_known_label": (actual_spec or expected_spec).get("known", True),
+        "is_known_defect": is_known_defect,
         "production_lot": lot,
         "revision": revision,
         "split": split,
@@ -297,50 +349,97 @@ def _normal_row(
 
 
 def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
-    """Recipe대로 정상 이미지를 out_root에 쓰고 metadata row를 돌려준다.
+    """Recipe대로 이미지를 out_root에 쓰고 metadata row를 돌려준다.
 
-    불량은 아직 없다 — #34가 이 row들 위에 synthetic defect를 얹는다.
+    불량 unit은 Label Slot 하나에만 불량이 있고 나머지는 정상이다. 어느 자리인지는 unit_id로 정해진다.
     """
     labels, cfg = recipe["labels"], recipe["build"]
+    overrides: dict[str, str] = recipe.get("severity_overrides") or {}
+    holdout = set((cfg.get("defects") or {}).get("holdout", []))
     roi = (recipe["roi_size"][0], recipe["roi_size"][1])
+    owned = {
+        p: sorted(
+            {i for s in v["revisions"].values() for i in s.values() if labels[i].get("known", True)}
+        )
+        for p, v in recipe["products"].items()
+    }
     rows: list[dict[str, Any]] = []
 
     for product_id, product in recipe["products"].items():
         tol = product["tolerance"]
-        for split, seq, revision, lot in _unit_plan(product, labels, cfg):
+        others = [i for p, ids in owned.items() if p != product_id for i in ids]
+        for split, seq, revision, lot, defect_type in _unit_plan(product, labels, cfg):
             unit_id = f"custom_pilot/{product_id}/{split}/{seq:05d}"
             out_dir = out_root / "images" / product_id / split
             out_dir.mkdir(parents=True, exist_ok=True)
-            for label_slot, identity in product["revisions"][revision].items():
-                spec = labels[identity]
-                sample_id = f"{unit_id}/{label_slot}"
-                rng = rng_for(sample_id)
-                nominal = product["slots"][label_slot]
+            slots: dict[str, str] = product["revisions"][revision]
+
+            # 정상 흔들림을 먼저 뽑는다 — 정상 row의 난수 소비 순서가 불량 유무와 무관해진다
+            jitter: dict[str, tuple[np.random.Generator, tuple[float, float], float]] = {}
+            for label_slot in slots:
+                rng = rng_for(f"{unit_id}/{label_slot}")
                 dx, dy = rng.uniform(-1, 1, 2) * tol["xy_mm"] * NORMAL_JITTER
                 dtheta = float(rng.uniform(-1, 1) * tol["theta_deg"] * NORMAL_JITTER)
+                jitter[label_slot] = (rng, (float(dx), float(dy)), dtheta)
+
+            broken: dict[str, synthetic.Mutation] = {}
+            if defect_type is not None:
+                for label_slot in (str(s) for s in rng_for(unit_id).permutation(list(slots))):
+                    rng, offset, dtheta = jitter[label_slot]
+                    m = synthetic.mutate(
+                        defect_type, expected_id=slots[label_slot], labels=labels,
+                        same_product=owned[product_id], other_products=others,
+                        tolerance=tol, offset_mm=offset, theta_deg=dtheta, rng=rng,
+                    )  # fmt: skip
+                    if m is not None:
+                        broken[label_slot] = m
+                        break
+                if not broken:
+                    raise ValueError(f"{unit_id}: {defect_type}를 넣을 수 있는 Label Slot이 없다")
+
+            for label_slot, identity in slots.items():
+                rng, offset, dtheta = jitter[label_slot]
+                m = broken.get(label_slot)
+                actual_id, actual_spec = (
+                    (m.actual_label_id, m.actual_spec) if m else (identity, labels[identity])
+                )
+                if m:
+                    offset, dtheta = m.offset_mm, m.theta_deg
+                nominal = product["slots"][label_slot]
 
                 name = f"{seq:05d}_{label_slot}.png"
                 render_roi(
-                    spec, product["body"], roi, (float(dx), float(dy)),
-                    nominal["theta"] + dtheta, rng,
+                    actual_spec, product["body"], roi, offset, nominal["theta"] + dtheta, rng,
+                    label_fx=m.label_fx if m else None,
                 ).save(out_dir / name)  # fmt: skip
 
+                actual_position = None
+                if actual_spec is not None:
+                    actual_position = {
+                        "x": round(nominal["x"] + offset[0], 3),
+                        "y": round(nominal["y"] + offset[1], 3),
+                        "theta": round(nominal["theta"] + dtheta, 3),
+                        "unit": "mm",
+                    }
+                defects = []
+                if m:
+                    sev = synthetic.severity(overrides, product_id, label_slot, m)
+                    defects = [{"type": m.defect_type, "severity": sev}]
                 rows.append(
-                    _normal_row(
-                        sample_id=sample_id,
+                    _row(
+                        sample_id=f"{unit_id}/{label_slot}",
                         unit_id=unit_id,
                         product_id=product_id,
                         label_slot=label_slot,
                         image_path=f"images/{product_id}/{split}/{name}",
-                        identity=identity,
-                        spec=spec,
+                        expected_id=identity,
+                        expected_spec=labels[identity],
+                        actual_id=actual_id,
+                        actual_spec=actual_spec,
                         expected_position=dict(nominal) | {"unit": "mm"},
-                        actual_position={
-                            "x": round(nominal["x"] + float(dx), 3),
-                            "y": round(nominal["y"] + float(dy), 3),
-                            "theta": round(nominal["theta"] + dtheta, 3),
-                            "unit": "mm",
-                        },
+                        actual_position=actual_position,
+                        defects=defects,
+                        is_known_defect=not (m and m.defect_type in holdout),
                         lot=lot,
                         revision=revision,
                         split=split,

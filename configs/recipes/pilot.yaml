@@ -171,16 +171,17 @@ products:
 # override 단위는 `{product}.{label_slot}` 이고, OCR은 field 단위까지 내려간다.
 # taxonomy의 기본 severity를 출발점으로 하고 여기 적힌 것만 덮어쓴다.
 # metadata에는 override가 적용된 **최종 severity**를 기록한다 (ADR 0004).
-# 불량 생성은 #34에서 붙는다 — 이 표는 그때 소비된다.
+# 키가 여러 단계로 겹치면 가장 구체적인 것이 이긴다 (src/utils/synthetic.py severity()).
 severity_overrides:
-  # 식품 유통기한은 오인쇄가 곧 회수 사유다
-  C.slot-2.ocr_mismatch.EXP: CRITICAL
-  # 경고 라벨은 오염만으로도 판독 불가가 된다
+  # 보관 문구 오탈자는 출하를 막을 사유가 아니다 (ocr_mismatch 기본 CRITICAL → MINOR).
+  # 같은 라벨의 EXP(유통기한) 오인쇄는 기본값 CRITICAL 그대로다
+  C.slot-2.ocr_mismatch.STORAGE: MINOR
+  # 경고 라벨은 오염만으로도 판독 불가가 된다 (contamination 기본 MINOR → MAJOR)
   B.slot-1.contamination: MAJOR
-  # 바코드 태그가 가려지면 추적이 끊긴다
-  A.slot-3.occlusion: CRITICAL
-  B.slot-3.occlusion: CRITICAL
-  C.slot-3.occlusion: CRITICAL
+  # 바코드 태그가 흐리면 판독이 안 돼 추적이 끊긴다 (blur 기본 MAJOR → CRITICAL)
+  A.slot-3.blur: CRITICAL
+  B.slot-3.blur: CRITICAL
+  C.slot-3.blur: CRITICAL
 
 # ------------------------------------------------------------
 # 데이터 구성
@@ -197,3 +198,22 @@ build:
     val: 120                    # L=3 → val 정상 360 row. f=0.334% 분위수 해상도 확보
     test: 100                   # 이 중 unknown_units개는 미등록 라벨 revision
   unknown_units_per_product: 20 # E3. test에만 (schema §4.2-3)
+
+  # 불량 unit (#34). 정상 unit과 별도로 추가하고, unit마다 Label Slot 1곳에만 불량이 있다.
+  # 생성기: src/utils/synthetic.py — defect_type 목록은 defect_taxonomy.md의 enum 중 일부다.
+  defects:
+    types:
+      - wrong_label             # 같은 제품의 다른 라벨
+      - wrong_product_label     # 다른 제품의 라벨
+      - ocr_mismatch            # 한 field의 문자 1개
+      - barcode_mismatch        # 바코드 값의 문자 1개 (인쇄 문자는 그대로)
+      - wrong_position          # 허용 오차의 1.3~2배
+      - wrong_orientation       # 허용 오차의 2.5~5배
+      - missing_label
+      - contamination
+      - blur
+      - unknown_visual          # 인쇄 줄무늬 탈락. taxonomy에 없는 모양
+    # E4: calibration에서 본 적 없는 유형. is_known_defect=false, test에만 (schema §4.2-4)
+    holdout: [unknown_visual]
+    val_units_per_type: 8       # hold-out을 뺀 유형만. E4의 "본 유형" 쪽
+    test_units_per_type: 24     # 3 products × 24 = 유형당 72 → escape 0건이면 95% 상한 ≤ 5% (ADR 0005)

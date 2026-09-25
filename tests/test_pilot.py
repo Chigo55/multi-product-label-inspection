@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 from src.utils.metadata import find_errors
-from src.utils.pilot import build, render_label, render_roi, rng_for
+from src.utils.pilot import render_label, render_roi, rng_for
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECIPE_PATH = REPO_ROOT / "configs" / "recipes" / "pilot.yaml"
@@ -30,15 +30,6 @@ REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
 @pytest.fixture(scope="module")
 def recipe() -> dict[str, Any]:
     return yaml.safe_load(RECIPE_PATH.read_text(encoding="utf-8"))
-
-
-@pytest.fixture
-def small(recipe: dict[str, Any]) -> dict[str, Any]:
-    """규모만 줄인 Recipe. 카탈로그와 배치 규칙은 그대로다."""
-    small = copy.deepcopy(recipe)
-    small["build"]["units_per_product"] = {"reference": 2, "train": 2, "val": 2, "test": 4}
-    small["build"]["unknown_units_per_product"] = 2
-    return small
 
 
 # ------------------------------------------------------------
@@ -112,32 +103,37 @@ def test_unknown_labels_exist(recipe: dict[str, Any]) -> None:
 # ------------------------------------------------------------
 # 생성 결과
 # ------------------------------------------------------------
-def test_build_passes_schema(small: dict[str, Any], tmp_path: Path) -> None:
-    rows = build(small, tmp_path)
-    assert find_errors(rows, image_root=tmp_path) == []
+Small = tuple[dict[str, Any], list[dict[str, Any]], Path]
 
 
-def test_unknown_labels_only_in_test(small: dict[str, Any], tmp_path: Path) -> None:
+def test_build_passes_schema(pilot_small: Small) -> None:
+    _, rows, root = pilot_small
+    assert find_errors(rows, image_root=root) == []
+
+
+def test_unknown_labels_only_in_test(pilot_small: Small) -> None:
     """schema §4.2-3. find_errors도 보지만, 애초에 만들어지지 않는지를 따로 고정한다."""
-    rows = build(small, tmp_path)
+    _, rows, _ = pilot_small
     unknown = [r for r in rows if r["is_known_label"] is False]
     assert unknown, "미등록 라벨 row가 하나도 생성되지 않았다"
     assert {r["split"] for r in unknown} == {"test"}
 
 
-def test_test_lots_are_disjoint(small: dict[str, Any], tmp_path: Path) -> None:
+def test_test_lots_are_disjoint(pilot_small: Small) -> None:
     """schema §4.2-2. 과거 LOT으로 학습·조정하고 미래 LOT을 검사한다."""
-    rows = build(small, tmp_path)
+    _, rows, _ = pilot_small
     test_lots = {r["production_lot"] for r in rows if r["split"] == "test"}
     other_lots = {r["production_lot"] for r in rows if r["split"] != "test"}
     assert test_lots and other_lots and not (test_lots & other_lots)
 
 
-def test_normal_rows_have_expected_equals_actual(small: dict[str, Any], tmp_path: Path) -> None:
+def test_normal_rows_have_expected_equals_actual(pilot_small: Small) -> None:
     """정상이란 Recipe가 요구한 라벨이 그대로 붙어 있는 것이다. 위치만 허용 오차 안에서 흔들린다."""
-    rows = build(small, tmp_path)
+    small, rows, _ = pilot_small
     tolerance = {p: v["tolerance"] for p, v in small["products"].items()}
-    for r in rows:
+    normal = [r for r in rows if r["normal_or_defect"] == "normal"]
+    assert normal
+    for r in normal:
         assert r["expected_label_id"] == r["actual_label_id"]
         assert r["expected_text"] == r["actual_text"]
         assert r["expected_barcode"] == r["actual_barcode"]

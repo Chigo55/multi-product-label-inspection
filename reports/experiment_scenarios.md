@@ -1,6 +1,6 @@
-# Experiment Scenarios v1.1
+# Experiment Scenarios v1.2
 
-> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-26 (Week 3) / 이슈: #31, #33
+> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-26 (Week 3) / 이슈: #31, #33, #34
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
 > RQ 매핑: `reports/research_questions.md` / 지표 정의: `reports/evaluation_protocol.md` / 분할: `datasets/schema.md` §4
 >
@@ -27,7 +27,7 @@
 | **E6** Domain Shift | 조명·LOT·카메라가 바뀌어도 버티는가 | RQ6, RQ2 | Public(후보: MVTec AD 2, VisA) + Pilot 촬영 조건 변경 | shift 요인별 `test` subset | in-domain 대비 DER/FPR 변화량 | Week 17~ |
 
 > 현재 받아 둔 데이터(MVTec AD)로 바로 할 수 있는 것은 **E1과 결함 유형별 DER**이다. E2는 public few-shot 설정으로 일부 가능하다.
-> E3는 Pilot benchmark(#33)의 미등록 라벨 row로 가능해졌다. E5는 난이도 구간(#35), E4는 synthetic defect(#34)가 있어야 한다.
+> E3는 Pilot benchmark(#33)의 미등록 라벨 row로, E4의 seen/unseen 비교는 synthetic defect(#34)로 가능해졌다. E5는 난이도 구간(#35)이 있어야 한다.
 
 ---
 
@@ -73,6 +73,7 @@
   (일부 유형을 calibration에 쓰고 나머지를 hold-out).
 - **지표**: seen defect DER vs unseen defect DER, 둘의 차이와 각각의 신뢰구간.
 - **성공 기준** (Pilot): unseen DER의 신뢰구간이 seen DER과 겹친다.
+- **Pilot 구성** (#34): 본 유형 9종은 val에 제품당 8 unit씩, hold-out `unknown_visual`(인쇄 줄무늬 탈락)은 test에만. 유형마다 test 72 unit
 - **주의**: normal-only 모델은 학습 때 불량을 보지 않는다. 그래서 Known/Unknown 구분은 **calibration에서 본 적이 있는가**로 정의된다.
 
 ## E5 — Similar Label
@@ -109,3 +110,4 @@
 | v0.1 | 2026-09-21 | 초안. E1~E6별 입력 / 분할 / 지표 / 성공 기준(제안) / 대응 RQ |
 | v1.0 | 2026-09-21 | 성공 기준 형태 확정(#31): E1 제품 단위 과검률에서 역산, E2 k=10(도전 5), E3 Unknown→OK 0건, E4 public은 유형별 DER·seen/unseen은 Pilot, E6 escape 대신 REVIEW 흡수 |
 | v1.1 | 2026-09-26 | E1의 Pilot 과검률 목표 **F = 1%** 확정(#33). 정본은 `configs/recipes/pilot.yaml`. E3·E5 입력이 되는 Pilot benchmark가 실제로 생성됨 |
+| v1.2 | 2026-09-26 | Pilot에 synthetic defect 10종 추가(#34). E4 Pilot의 hold-out 유형은 `unknown_visual`(val에 없음, `is_known_defect=false`), 본 유형은 나머지 9종 |
