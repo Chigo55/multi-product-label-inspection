@@ -1,6 +1,6 @@
 # Experiment Scenarios v1.3
 
-> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-26 (Week 3) / 이슈: #31, #33, #34, #35
+> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-25 (Week 3) / 이슈: #31, #33, #34, #35
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
 > RQ 매핑: `reports/research_questions.md` / 지표 정의: `reports/evaluation_protocol.md` / 분할: `datasets/schema.md` §4
 >
@@ -121,6 +121,6 @@
 |---|---|---|
 | v0.1 | 2026-09-21 | 초안. E1~E6별 입력 / 분할 / 지표 / 성공 기준(제안) / 대응 RQ |
 | v1.0 | 2026-09-21 | 성공 기준 형태 확정(#31): E1 제품 단위 과검률에서 역산, E2 k=10(도전 5), E3 Unknown→OK 0건, E4 public은 유형별 DER·seen/unseen은 Pilot, E6 escape 대신 REVIEW 흡수 |
-| v1.1 | 2026-09-26 | E1의 Pilot 과검률 목표 **F = 1%** 확정(#33). 정본은 `configs/recipes/pilot.yaml`. E3·E5 입력이 되는 Pilot benchmark가 실제로 생성됨 |
-| v1.2 | 2026-09-26 | Pilot에 synthetic defect 10종 추가(#34). E4 Pilot의 hold-out 유형은 `unknown_visual`(val에 없음, `is_known_defect=false`), 본 유형은 나머지 9종 |
-| v1.3 | 2026-09-26 | E5 구간 규칙 확정, Pilot에 구간별 전용 unit 72개(#35). Confusion Rate = 구간별 바꿔치기 DER |
+| v1.1 | 2026-09-25 | E1의 Pilot 과검률 목표 **F = 1%** 확정(#33). 정본은 `configs/recipes/pilot.yaml`. E3·E5 입력이 되는 Pilot benchmark가 실제로 생성됨 |
+| v1.2 | 2026-09-25 | Pilot에 synthetic defect 10종 추가(#34). E4 Pilot의 hold-out 유형은 `unknown_visual`(val에 없음, `is_known_defect=false`), 본 유형은 나머지 9종 |
+| v1.3 | 2026-09-25 | E5 구간 규칙 확정, Pilot에 구간별 전용 unit 72개(#35). Confusion Rate = 구간별 바꿔치기 DER |
