@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 from src.utils.metadata import find_errors
-from src.utils.pilot import render_label, render_roi, rng_for
+from src.utils.pilot import E5_TIERS, e5_pairs, render_label, render_roi, rng_for, similarity_tier
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECIPE_PATH = REPO_ROOT / "configs" / "recipes" / "pilot.yaml"
@@ -165,3 +165,62 @@ def test_registry_hash_matches_recipe() -> None:
     """registry의 sha256은 Recipe 파일 해시다 (원본 아카이브가 없으므로). 어긋나면 build가 막는다."""
     entry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))["pilot"]
     assert entry["sha256"] == hashlib.sha256(RECIPE_PATH.read_bytes()).hexdigest()
+
+
+# ------------------------------------------------------------
+# E5 난이도 구간 (#35)
+# ------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("a", "b", "tier"),
+    [
+        ("a-1", "c-1", "easy"),
+        ("a-2", "b-2", "medium"),
+        ("a-2", "a-4", "hard"),
+        ("b-3", "b-4", "extreme"),
+    ],
+)
+def test_designed_pairs_land_in_their_tier(
+    recipe: dict[str, Any], a: str, b: str, tier: str
+) -> None:
+    """카탈로그를 설계할 때 의도한 쌍이 규칙으로도 같은 구간이 된다. 순서를 바꿔도 같다."""
+    labels = recipe["labels"]
+    assert similarity_tier(labels[a], labels[b]) == similarity_tier(labels[b], labels[a]) == tier
+
+
+def test_every_tier_has_pairs(recipe: dict[str, Any]) -> None:
+    pairs = e5_pairs(recipe["labels"])
+    assert set(pairs) == set(E5_TIERS) and all(pairs.values())
+    unknown = {i for i, s in recipe["labels"].items() if not s.get("known", True)}
+    assert not [p for ps in pairs.values() for p in ps if set(p) & unknown], (
+        "미등록 라벨은 E3 몫이다"
+    )
+
+
+def test_swap_rows_carry_their_tier_tag(pilot_small: Small) -> None:
+    """바꿔치기 불량은 전부, 그리고 그것만 E5 태그를 받는다. 태그는 (요구, 실제) 쌍의 구간이다."""
+    recipe, rows, _ = pilot_small
+    labels = recipe["labels"]
+    for r in rows:
+        e5 = [t for t in r["experiment_tags"] if t.startswith("E5-")]
+        if r["defect_type"] in ("wrong_label", "wrong_product_label"):
+            tier = similarity_tier(labels[r["expected_label_id"]], labels[r["actual_label_id"]])
+            assert e5 == [f"E5-{tier}"]
+        else:
+            assert e5 == []
+
+
+def test_each_tier_gets_its_dedicated_units(pilot_small: Small) -> None:
+    """무작위 바꿔치기로는 extreme(1쌍)이 거의 안 나온다. 전용 unit이 구간마다 최소 수를 채운다."""
+    recipe, rows, _ = pilot_small
+    n = recipe["build"]["e5_units_per_tier"]
+    for tier in E5_TIERS:
+        assert sum(f"E5-{tier}" in r["experiment_tags"] and r["split"] == "test" for r in rows) >= n
+
+
+def test_extreme_rows_differ_only_in_barcode(pilot_small: Small) -> None:
+    _, rows, _ = pilot_small
+    extreme = [r for r in rows if "E5-extreme" in r["experiment_tags"]]
+    assert extreme
+    for r in extreme:
+        assert r["actual_text"] == r["expected_text"]
+        assert r["actual_barcode"] != r["expected_barcode"]

@@ -1,4 +1,4 @@
-"""reports/evaluation_protocol.md §0~§2, §5, §6 의 코드 정본.
+"""reports/evaluation_protocol.md §0~§2, §3(Similar-label Confusion Rate), §5, §6 의 코드 정본.
 
 REVIEW 처리 규칙 (ADR 0002):
 - DER / FPR: REVIEW는 escape도 false reject도 아니다 (3-state 그대로).
@@ -109,7 +109,21 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         "auprc": float(average_precision_score(is_defect, score)) if n_def and n_norm else None,
         "defect_escape_rate_by_category": _der_by(rows, decision, "defect_category"),
         "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
+        "similar_label_confusion_rate": _der_by(*_e5_subset(rows, decision), "e5_tier"),
     }
+
+
+def _e5_subset(
+    rows: list[dict[str, Any]], decision: list[str]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """`E5-<구간>` 태그가 달린 row만, 구간을 `e5_tier` 키로 붙여서 (protocol §3 Similar-label Confusion Rate)."""
+    picked = [
+        (row | {"e5_tier": tag.removeprefix("E5-")}, dec)
+        for row, dec in zip(rows, decision, strict=True)
+        for tag in row.get("experiment_tags") or []
+        if tag.startswith("E5-")
+    ]
+    return [r for r, _ in picked], [d for _, d in picked]
 
 
 def _der_by(rows: list[dict[str, Any]], decision: list[str], key: str) -> dict[str, Any]:

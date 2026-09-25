@@ -1,6 +1,6 @@
-# Experiment Scenarios v1.2
+# Experiment Scenarios v1.3
 
-> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-26 (Week 3) / 이슈: #31, #33, #34
+> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-26 (Week 3) / 이슈: #31, #33, #34, #35
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
 > RQ 매핑: `reports/research_questions.md` / 지표 정의: `reports/evaluation_protocol.md` / 분할: `datasets/schema.md` §4
 >
@@ -27,7 +27,7 @@
 | **E6** Domain Shift | 조명·LOT·카메라가 바뀌어도 버티는가 | RQ6, RQ2 | Public(후보: MVTec AD 2, VisA) + Pilot 촬영 조건 변경 | shift 요인별 `test` subset | in-domain 대비 DER/FPR 변화량 | Week 17~ |
 
 > 현재 받아 둔 데이터(MVTec AD)로 바로 할 수 있는 것은 **E1과 결함 유형별 DER**이다. E2는 public few-shot 설정으로 일부 가능하다.
-> E3는 Pilot benchmark(#33)의 미등록 라벨 row로, E4의 seen/unseen 비교는 synthetic defect(#34)로 가능해졌다. E5는 난이도 구간(#35)이 있어야 한다.
+> E3는 Pilot benchmark(#33)의 미등록 라벨 row로, E4의 seen/unseen 비교는 synthetic defect(#34)로, E5는 난이도 구간(#35)으로 가능해졌다.
 
 ---
 
@@ -87,8 +87,20 @@
   | Hard | 문자 한두 글자만 다르다 |
   | Extreme | Barcode/OCR 내용만 다르다 |
 
-- **분할**: 난이도별 test subset을 `experiment_tags`(`E5-easy` … `E5-extreme`)로 표시한다.
-- **지표**: 난이도별 Similar-label Confusion Rate, modality ablation(visual only → +OCR → +Barcode → +Context).
+- **구간 규칙** (#35, 코드 `src/utils/pilot.py` `similarity_tier`): 사람이 쌍을 고르지 않고 카탈로그에서 정한다.
+  위에서부터 첫 번째로 맞는 구간이다.
+
+  | 구간 | 규칙 | Pilot 쌍 수 | 예 |
+  |---|---|---:|---|
+  | Easy | layout·palette·font 중 하나라도 다르다 | 51 | a-1 / c-1 |
+  | Extreme | 겉모습과 인쇄 문자가 전부 같다 (바코드만 다름) | 1 | b-3 / b-4 |
+  | Hard | 같은 field·같은 글자 수, 다른 글자 ≤ 2개 | 3 | a-2 / a-4, a-3 / b-3, a-3 / b-4 |
+  | Medium | 나머지 — 겉모습은 같고 내용이 여러 곳 다르다 | 11 | a-2 / b-2 |
+
+- **분할**: 난이도별 test subset을 `experiment_tags`(`E5-easy` … `E5-extreme`)로 표시한다. 바꿔치기 불량
+  (`wrong_label` / `wrong_product_label`)은 전부 (요구, 실제) 쌍의 구간 태그를 받는다. 무작위 바꿔치기로는
+  Extreme(1쌍)이 거의 생기지 않으므로 **구간마다 전용 unit 72개를 test에 추가**한다 (escape 0건이면 95% 상한 ≤ 5%).
+- **지표**: 난이도별 Similar-label Confusion Rate(= 구간별 바꿔치기 불량의 DER, evaluation_protocol §3), modality ablation(visual only → +OCR → +Barcode → +Context).
 - **성공 기준**: Extreme 구간에서 visual only는 구별하지 못하고 OCR/Barcode를 더하면 구별한다 — 가설 검증형.
 
 ## E6 — Domain Shift
@@ -111,3 +123,4 @@
 | v1.0 | 2026-09-21 | 성공 기준 형태 확정(#31): E1 제품 단위 과검률에서 역산, E2 k=10(도전 5), E3 Unknown→OK 0건, E4 public은 유형별 DER·seen/unseen은 Pilot, E6 escape 대신 REVIEW 흡수 |
 | v1.1 | 2026-09-26 | E1의 Pilot 과검률 목표 **F = 1%** 확정(#33). 정본은 `configs/recipes/pilot.yaml`. E3·E5 입력이 되는 Pilot benchmark가 실제로 생성됨 |
 | v1.2 | 2026-09-26 | Pilot에 synthetic defect 10종 추가(#34). E4 Pilot의 hold-out 유형은 `unknown_visual`(val에 없음, `is_known_defect=false`), 본 유형은 나머지 9종 |
+| v1.3 | 2026-09-26 | E5 구간 규칙 확정, Pilot에 구간별 전용 unit 72개(#35). Confusion Rate = 구간별 바꿔치기 DER |

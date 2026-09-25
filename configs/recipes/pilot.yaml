@@ -217,3 +217,9 @@ build:
     holdout: [unknown_visual]
     val_units_per_type: 8       # hold-out을 뺀 유형만. E4의 "본 유형" 쪽
     test_units_per_type: 24     # 3 products × 24 = 유형당 72 → escape 0건이면 95% 상한 ≤ 5% (ADR 0005)
+
+  # E5 전용 unit (#35). 구간(easy/medium/hard/extreme)마다 72 unit을 test에만 추가한다.
+  # 구간은 카탈로그에서 규칙으로 정한다 (src/utils/pilot.py similarity_tier) — 사람이 쌍을 고르지 않는다.
+  # 각 unit은 Label Slot 한 곳의 라벨이 그 구간의 짝으로 바뀐 wrong_label / wrong_product_label이다.
+  # 무작위 바꿔치기 불량도 같은 규칙으로 E5 태그를 받는다. 72 = escape 0건이면 95% 상한 ≤ 5%
+  e5_units_per_tier: 72

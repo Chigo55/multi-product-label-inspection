@@ -1,4 +1,4 @@
-"""Pilot benchmark 생성 (#33, #34) — Recipe → 정상·불량 이미지 + metadata.jsonl.
+"""Pilot benchmark 생성 (#33, #34, #35) — Recipe → 정상·불량 이미지 + metadata.jsonl.
 
     uv run experiments/build_pilot.py
 
@@ -10,6 +10,7 @@
 데이터가 달라진 것이므로 `version`을 올리라고 여기서 막는다.
 
 불량 unit은 정상 unit 뒤에 따로 붙고, unit마다 Label Slot 한 곳만 불량이다 (#34).
+E5 전용 unit은 그 뒤에 test로만 붙는다 (#35).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 �
 
 from src.utils.metadata import find_errors, write_jsonl
 from src.utils.paths import SHARED_ROOT
-from src.utils.pilot import build
+from src.utils.pilot import E5_TIERS, build, e5_pairs
 
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
 NAME = "pilot"
@@ -104,6 +105,14 @@ def report(recipe: dict, rows: list[dict]) -> None:
         sev = dict(Counter(r["defect_severity"] for r in mine))
         known = "" if mine[0]["is_known_defect"] else "  ← hold-out (E4)"
         print(f"    {t:20s} val {n_val:3d} | test {len(mine) - n_val:3d} | {sev}{known}")
+
+    # E5: 구간마다 쌍 수와 test row 수. 0이면 그 구간은 평가할 수 없다
+    pairs = e5_pairs(recipe["labels"])
+    print("  E5 난이도 구간 (바꿔치기 불량)")
+    for tier in E5_TIERS:
+        n = sum(f"E5-{tier}" in r["experiment_tags"] and r["split"] == "test" for r in rows)
+        n_pairs = len({tuple(sorted(p)) for p in pairs[tier]})
+        print(f"    {tier:8s} 쌍 {n_pairs:2d} | test {n:3d} row")
 
 
 if __name__ == "__main__":
