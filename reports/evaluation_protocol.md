@@ -291,4 +291,4 @@ Camera acquisition
 | v0.3 | 2026-09-21 | 코드(`src/evaluation/metrics.py`)와 정의 일치: 지표별 REVIEW 처리표, 2×3 confusion, threshold 경계값=REVIEW, CI는 양측 95%(0건 상한 ≈3.7/n으로 정정), §9.1 `predictions.csv` 형식 |
 | v0.4 | 2026-09-21 | §6 threshold 기본 규칙 확정: val 정상 분위수(f=1%, r=10%), f는 제품 단위 목표에서 역산 (#30) |
 | v0.5 | 2026-09-21 | §2 DER 분해(defect_category별 / defect_type별) 추가 (#32) |
-| v0.6 | 2026-09-26 | §3 Similar-label Confusion Rate 정의: E5 구간별 바꿔치기 불량의 DER (#35). 코드 `similar_label_confusion_rate` |
+| v0.6 | 2026-09-25 | §3 Similar-label Confusion Rate 정의: E5 구간별 바꿔치기 불량의 DER (#35). 코드 `similar_label_confusion_rate` |
