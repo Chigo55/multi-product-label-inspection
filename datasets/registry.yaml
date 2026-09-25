@@ -40,13 +40,13 @@ visa:
   downloaded: 2026-09-21
 
 pilot:
-  version: "0.1"                    # 자체 Multi-Product Multi-Label benchmark, Pilot 규모 (기준 문서 §24)
+  version: "0.2"                    # 0.1 → 0.2: synthetic defect 10종 추가 (#34). 정상 unit·그림은 0.1과 같다
   schema: v1.1
   converter: src/utils/pilot.py     # 생성: uv run experiments/build_pilot.py
   root: datasets/custom/pilot
   metadata: datasets/custom/pilot/metadata.jsonl
   recipe: configs/recipes/pilot.yaml
   source: 생성물 — 원본 아카이브가 없다. Recipe + 변환기 + sample_id seed만으로 결정된다
-  sha256: ec33376bf326cdd82bce72cce631500ef6e07e8c215cdab5ed0908c53acfcba3   # 원본 아카이브 대신 **Recipe 파일**의 해시다. 바뀌면 version을 올린다
+  sha256: fcb89b56afc257f48a30b19a258b20f52c8d1df1293947eb88435fc0ce7eb7ea   # 원본 아카이브 대신 **Recipe 파일**의 해시다. 바뀌면 version을 올린다
   license: 이 저장소와 동일. 라벨은 전부 합성이고 외부 이미지를 쓰지 않는다 (#6와 무관)
   downloaded: null                  # 받은 데이터가 아니다
