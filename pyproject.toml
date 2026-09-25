@@ -92,5 +92,7 @@ project-excludes = ["**/.venv/**", "notebooks", "mlartifacts", "datasets"]
 # `src/__init__.py` 가 있어 `src` 자체가 패키지다 (`from src.utils.mvtec import ...`).
 # 표준 src-layout이 아니므로 import root를 저장소 루트로 고정한다 — pytest의
 # `pythonpath = ["."]` 와 같은 규약.
-search-path = ["."]
+# `experiments`는 스크립트를 직접 실행할 때 자기 디렉터리가 sys.path에 들어가는 것을 반영한다
+# (`from _bootstrap import REPO_ROOT`).
+search-path = [".", "experiments"]
 python-version = "3.12.3"

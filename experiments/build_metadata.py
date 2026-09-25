@@ -11,17 +11,13 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
-from pathlib import Path
 
 import yaml
+from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-# `uv run experiments/x.py`에서 `src` import (pytest의 pythonpath=["."]와 같은 규약)
-sys.path.insert(0, str(REPO_ROOT))
-
-from src.utils import mvtec, visa  # noqa: E402
-from src.utils.metadata import find_errors, write_jsonl  # noqa: E402
-from src.utils.paths import SHARED_ROOT  # noqa: E402
+from src.utils import mvtec, visa
+from src.utils.metadata import find_errors, write_jsonl
+from src.utils.paths import SHARED_ROOT
 
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
 CONVERTERS = {
