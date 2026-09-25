@@ -1,6 +1,6 @@
-# Experiment Scenarios v1.0
+# Experiment Scenarios v1.1
 
-> 작성일: 2026-09-21 (Week 2) / 이슈: #31
+> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-26 (Week 3) / 이슈: #31, #33
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
 > RQ 매핑: `reports/research_questions.md` / 지표 정의: `reports/evaluation_protocol.md` / 분할: `datasets/schema.md` §4
 >
@@ -26,8 +26,8 @@
 | **E5** Similar Label | 거의 같은 라벨을 구별하는가 | RQ3, RQ1 | Pilot/Main (#35 난이도 구간) | 난이도별 `test` subset | 난이도별 Similar-label Confusion Rate, modality ablation | Week 12 |
 | **E6** Domain Shift | 조명·LOT·카메라가 바뀌어도 버티는가 | RQ6, RQ2 | Public(후보: MVTec AD 2, VisA) + Pilot 촬영 조건 변경 | shift 요인별 `test` subset | in-domain 대비 DER/FPR 변화량 | Week 17~ |
 
-> 현재 받아 둔 데이터(MVTec AD)로 바로 할 수 있는 것은 **E1과 결함 유형별 DER**이다. E2는 public few-shot 설정으로 일부 가능하고,
-> E3·E5는 자체 benchmark(#33~#35)가 있어야 한다.
+> 현재 받아 둔 데이터(MVTec AD)로 바로 할 수 있는 것은 **E1과 결함 유형별 DER**이다. E2는 public few-shot 설정으로 일부 가능하다.
+> E3는 Pilot benchmark(#33)의 미등록 라벨 row로 가능해졌다. E5는 난이도 구간(#35), E4는 synthetic defect(#34)가 있어야 한다.
 
 ---
 
@@ -40,7 +40,9 @@
 - **성공 기준**: **제품 단위 과검률 목표 F를 먼저 정하고**, 라벨 단위 f = 1 − (1 − F)^(1/L)로 역산해
   calibration에 쓴다 (L = 제품당 라벨 수. public은 L=1, f=1%). 그 조건에서 DER 최소.
   CDER 0건이면 상한과 n을 함께 보고한다. P95 < 1000 ms (RQ6 1차 목표).
-  Pilot의 F `[시작 시 확정]`.
+  **Pilot의 F = 1%** (#33 확정). 정본은 Recipe `configs/recipes/pilot.yaml`의
+  `product_false_reject_target`이고, 제품별 L에서 f를 역산한다 — A·B(L=3) f=0.334%, C(L=4) f=0.251%.
+  분위수 해상도를 확보하려고 val 정상을 제품당 360~480 row로 잡았다.
 - **주의**: public track은 CDER이 N/A다 (schema §3.1).
 
 ## E2 — Few-shot New Label
@@ -106,3 +108,4 @@
 |---|---|---|
 | v0.1 | 2026-09-21 | 초안. E1~E6별 입력 / 분할 / 지표 / 성공 기준(제안) / 대응 RQ |
 | v1.0 | 2026-09-21 | 성공 기준 형태 확정(#31): E1 제품 단위 과검률에서 역산, E2 k=10(도전 5), E3 Unknown→OK 0건, E4 public은 유형별 DER·seen/unseen은 Pilot, E6 escape 대신 REVIEW 흡수 |
+| v1.1 | 2026-09-26 | E1의 Pilot 과검률 목표 **F = 1%** 확정(#33). 정본은 `configs/recipes/pilot.yaml`. E3·E5 입력이 되는 Pilot benchmark가 실제로 생성됨 |

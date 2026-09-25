@@ -1,0 +1,199 @@
+# ============================================================
+# Inspection Recipe — Pilot benchmark (#33)
+# ============================================================
+# CONTEXT.md: Recipe는 "모든 Expected 값의 유일한 출처이며 Severity를 정하는 주체"다.
+# 이 파일이 pilot의 expected_* 필드와 Label Identity 카탈로그의 정본이다.
+#
+# 여기 없는 것: 좌표·폰트 크기 같은 렌더링 세부. 그건 domain spec이 아니라
+# 그리는 방법이라 src/utils/pilot.py 의 layout 함수가 갖는다.
+#
+# 이미지는 커밋하지 않는다: uv run experiments/build_pilot.py 로 재생성한다.
+
+version: v0.1
+
+# 제품 단위 과검률 목표 F (E1 성공 기준, reports/experiment_scenarios.md).
+# 라벨 단위 f = 1 - (1-F)^(1/L) 로 역산해서 calibration에 쓴다 (L = 제품당 Label Slot 수).
+product_false_reject_target: 0.01
+
+# ROI 이미지 크기 (px). 한 row = 한 Label Slot의 ROI 이미지 1장.
+roi_size: [256, 256]
+
+# barcode 값은 6자다. 256px ROI 안의 Code128은 모듈당 폭이 2px 남짓이라
+# 10자를 넣으면 1.4px/module이 되어 물리적으로 판독이 불가능해진다 (src/utils/pilot.py 참고).
+
+# ------------------------------------------------------------
+# Label Identity 카탈로그
+# ------------------------------------------------------------
+# layout: plate | tag | warning | food   (src/utils/pilot.py)
+# known:  false면 onboarding되지 않은 라벨 → E3. 이 라벨이 든 unit은 test에만 둔다.
+labels:
+  # --- Product A: 전장 부품 ---
+  a-1:
+    layout: plate
+    palette: steel
+    font: mono
+    text: {MODEL: "XA-100", RATING: "24V 3.5A", SN: "A1-0001"}
+    barcode: "XA1001"
+  a-2:
+    layout: plate
+    palette: steel
+    font: mono
+    text: {MODEL: "XA-100", REV: "03", PART: "P-4471"}
+    barcode: "XA1003"
+  a-3:
+    layout: tag
+    palette: paper
+    font: sans
+    text: {TITLE: "A-SERIES"}
+    barcode: "XA1091"
+  a-4:                                   # a-2와 문자 2글자만 다르다 (E5-hard / OCR-only)
+    layout: plate
+    palette: steel
+    font: mono
+    text: {MODEL: "XA-108", REV: "04", PART: "P-4471"}
+    barcode: "XA1083"
+
+  # --- Product B: 화학 용기 ---
+  b-1:
+    layout: warning
+    palette: amber
+    font: sans
+    text: {TITLE: "WARNING", BODY: "FLAMMABLE"}
+    barcode: null
+  b-2:                                   # a-2와 같은 layout, 내용만 다르다 (E5-medium / cross-product similar)
+    layout: plate
+    palette: steel
+    font: mono
+    text: {MODEL: "XB-200", REV: "01", PART: "P-8820"}
+    barcode: "XB2011"
+  b-3:
+    layout: tag
+    palette: paper
+    font: sans
+    text: {TITLE: "B-SERIES"}
+    barcode: "BX2007"
+  b-4:                                   # b-3과 인쇄 문자가 완전히 같고 barcode 값만 다르다 (E5-extreme / Barcode-only)
+    layout: tag
+    palette: paper
+    font: sans
+    text: {TITLE: "B-SERIES"}
+    barcode: "BX2008"
+
+  # --- Product C: 식품 포장 ---
+  c-1:                                   # a-1과 layout·palette·font가 전부 다르다 (E5-easy)
+    layout: food
+    palette: mint
+    font: serif
+    text: {NAME: "GRAIN SNACK", NET: "120 g"}
+    barcode: null
+  c-2:
+    layout: food
+    palette: mint
+    font: serif
+    text: {EXP: "2027-04-30", STORAGE: "COOL DRY"}
+    barcode: null
+  c-3:
+    layout: tag
+    palette: paper
+    font: sans
+    text: {TITLE: "CF-300"}
+    barcode: "CF3014"
+  c-4:
+    layout: food
+    palette: mint
+    font: serif
+    text: {ORIGIN: "KOREA", PLANT: "PL-02"}
+    barcode: null
+
+  # --- 미등록 라벨 (E3) ---
+  u-1:                                   # A의 신규 revision. 라인에는 들어왔지만 onboarding 전이다
+    layout: plate
+    palette: steel
+    font: mono
+    text: {MODEL: "XA-112", REV: "05", PART: "P-4471"}
+    barcode: "XA1123"
+    known: false
+  u-2:                                   # C의 신규 용량 라벨
+    layout: food
+    palette: mint
+    font: serif
+    text: {NAME: "GRAIN SNACK", NET: "150 g"}
+    barcode: null
+    known: false
+
+# ------------------------------------------------------------
+# Product Type별 Recipe
+# ------------------------------------------------------------
+# slots:     Label Slot의 제품 좌표계 기준 기대 위치 (mm)
+# tolerance: 이 안이면 정상. 넘으면 wrong_position / wrong_orientation (#34)
+# revisions: revision → Label Slot별 expected Label Identity.
+#            미등록 라벨이 들어간 revision은 test split에만 배정된다.
+products:
+  A:
+    name: 전장 부품
+    body: brushed_metal
+    tolerance: {xy_mm: 1.5, theta_deg: 3.0}
+    slots:
+      slot-1: {x: 30.0, y: 20.0, theta: 0.0}
+      slot-2: {x: 30.0, y: 60.0, theta: 0.0}
+      slot-3: {x: 30.0, y: 95.0, theta: 0.0}
+    revisions:
+      "03": {slot-1: a-1, slot-2: a-2, slot-3: a-3}
+      "04": {slot-1: a-1, slot-2: a-4, slot-3: a-3}
+      "05": {slot-1: a-1, slot-2: u-1, slot-3: a-3}
+  B:
+    name: 화학 용기
+    body: plastic_dark
+    tolerance: {xy_mm: 1.5, theta_deg: 3.0}
+    slots:
+      slot-1: {x: 25.0, y: 18.0, theta: 0.0}
+      slot-2: {x: 25.0, y: 58.0, theta: 0.0}
+      slot-3: {x: 25.0, y: 96.0, theta: 0.0}
+    revisions:
+      "01": {slot-1: b-1, slot-2: b-2, slot-3: b-3}
+      "02": {slot-1: b-1, slot-2: b-2, slot-3: b-4}
+  C:
+    name: 식품 포장
+    body: carton
+    tolerance: {xy_mm: 2.0, theta_deg: 4.0}
+    slots:
+      slot-1: {x: 20.0, y: 15.0, theta: 0.0}
+      slot-2: {x: 20.0, y: 45.0, theta: 0.0}
+      slot-3: {x: 20.0, y: 75.0, theta: 0.0}
+      slot-4: {x: 20.0, y: 100.0, theta: 0.0}
+    revisions:
+      "01": {slot-1: c-1, slot-2: c-2, slot-3: c-3, slot-4: c-4}
+      "02": {slot-1: u-2, slot-2: c-2, slot-3: c-3, slot-4: c-4}
+
+# ------------------------------------------------------------
+# Severity override (defect_taxonomy.md §3)
+# ------------------------------------------------------------
+# override 단위는 `{product}.{label_slot}` 이고, OCR은 field 단위까지 내려간다.
+# taxonomy의 기본 severity를 출발점으로 하고 여기 적힌 것만 덮어쓴다.
+# metadata에는 override가 적용된 **최종 severity**를 기록한다 (ADR 0004).
+# 불량 생성은 #34에서 붙는다 — 이 표는 그때 소비된다.
+severity_overrides:
+  # 식품 유통기한은 오인쇄가 곧 회수 사유다
+  C.slot-2.ocr_mismatch.EXP: CRITICAL
+  # 경고 라벨은 오염만으로도 판독 불가가 된다
+  B.slot-1.contamination: MAJOR
+  # 바코드 태그가 가려지면 추적이 끊긴다
+  A.slot-3.occlusion: CRITICAL
+  B.slot-3.occlusion: CRITICAL
+  C.slot-3.occlusion: CRITICAL
+
+# ------------------------------------------------------------
+# 데이터 구성
+# ------------------------------------------------------------
+# LOT 규칙 (schema §4.2-2): test의 LOT은 train/val/reference와 겹칠 수 없다.
+build:
+  seed: 20260926
+  lots:
+    fit: ["L2601", "L2602"]     # train / val / reference
+    test: ["L2603", "L2604"]
+  units_per_product:
+    reference: 60               # E2 few-shot k=50까지 뽑을 수 있어야 한다
+    train: 200
+    val: 120                    # L=3 → val 정상 360 row. f=0.334% 분위수 해상도 확보
+    test: 100                   # 이 중 unknown_units개는 미등록 라벨 revision
+  unknown_units_per_product: 20 # E3. test에만 (schema §4.2-3)

@@ -29,6 +29,7 @@ dependencies = [
     "matplotlib>=3.8",
     # --- 이미지 ---
     "Pillow>=10.3",
+    "python-barcode>=0.16.1",
 ]
 
 [project.optional-dependencies]
