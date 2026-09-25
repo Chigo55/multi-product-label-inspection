@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -23,15 +22,12 @@ from typing import Any
 import mlflow
 import numpy as np
 import yaml
+from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-# `uv run experiments/x.py`에서 `src` import (pytest의 pythonpath=["."]와 같은 규약)
-sys.path.insert(0, str(REPO_ROOT))
-
-from src.evaluation.metrics import calibrate, decide, evaluate  # noqa: E402
-from src.utils.metadata import find_errors, read_jsonl  # noqa: E402
-from src.utils.paths import SHARED_ROOT  # noqa: E402
-from src.utils.tracking import git_commit, git_is_dirty, start_experiment  # noqa: E402
+from src.evaluation.metrics import calibrate, decide, evaluate
+from src.utils.metadata import find_errors, read_jsonl
+from src.utils.paths import SHARED_ROOT
+from src.utils.tracking import git_commit, git_is_dirty, start_experiment
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week02_pipeline_check.yaml"
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
