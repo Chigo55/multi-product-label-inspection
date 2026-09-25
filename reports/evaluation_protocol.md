@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.5
+# Evaluation Protocol v0.6
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -89,11 +89,17 @@ positive = defect 기준.
 |---|---|
 | **Known Label Accuracy** | `is_known_label=true` 샘플에서 `actual_label_id`를 맞춘 비율 |
 | **Unknown Label Detection Rate** | `is_known_label=false` 샘플을 `UNKNOWN`으로 거부한 비율 (= 1 − 오분류율) |
-| Similar-label Confusion Rate | E5 난이도(Easy/Medium/Hard/Extreme)별 혼동율 |
+| **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
 | Open-set 상태 정확도 | `KNOWN_EXPECTED` / `KNOWN_WRONG` / `UNKNOWN` 3-class 정확도 |
 
 > **Unknown을 기존 class로 억지 분류한 경우는 단순 오분류가 아니라 별도 실패 유형으로 집계한다.**
 > 이것이 현장에서 가장 위험한 실패 모드다.
+
+**Similar-label Confusion Rate를 escape로 정의한 이유**: 라벨 A 자리에 A와 닮은 B가 붙었는데 `OK`가 나왔다면,
+시스템이 B를 A로 혼동한 것이다. 이 정의는 판정(`decision`)만 쓰므로 identity를 출력하지 않는 AD 모델에도
+적용된다 — E5 성공 기준("visual only는 Extreme에서 실패하고 +OCR/Barcode로 구별")을 같은 척도로 비교할 수 있다.
+`REVIEW`는 혼동이 아니다(사람에게 갔다). 구간은 `experiment_scenarios.md` E5, 코드는 `src/utils/pilot.py`
+`similarity_tier`. 태그가 없는 데이터(public track)는 빈 결과이며 0%로 보고하지 않는다.
 
 ---
 
@@ -285,3 +291,4 @@ Camera acquisition
 | v0.3 | 2026-09-21 | 코드(`src/evaluation/metrics.py`)와 정의 일치: 지표별 REVIEW 처리표, 2×3 confusion, threshold 경계값=REVIEW, CI는 양측 95%(0건 상한 ≈3.7/n으로 정정), §9.1 `predictions.csv` 형식 |
 | v0.4 | 2026-09-21 | §6 threshold 기본 규칙 확정: val 정상 분위수(f=1%, r=10%), f는 제품 단위 목표에서 역산 (#30) |
 | v0.5 | 2026-09-21 | §2 DER 분해(defect_category별 / defect_type별) 추가 (#32) |
+| v0.6 | 2026-09-26 | §3 Similar-label Confusion Rate 정의: E5 구간별 바꿔치기 불량의 DER (#35). 코드 `similar_label_confusion_rate` |

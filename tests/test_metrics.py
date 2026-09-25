@@ -240,3 +240,32 @@ def test_der_breakdown_by_category_and_type() -> None:
         "missing": (1, 2),
         "scratch": (1, 1),
     }
+
+
+# --- §3 Similar-label Confusion Rate (E5) ---
+
+
+def test_similar_label_confusion_rate_is_swap_escape_by_tier() -> None:
+    """E5-<구간> 태그가 달린 바꿔치기 불량 중 OK로 나간 비율. 태그 없는 row는 세지 않는다."""
+    rows, preds = _rows_preds(
+        [
+            ("defect", OK, "CRITICAL"),  # E5-extreme, 새어 나감
+            ("defect", NG, "CRITICAL"),  # E5-extreme
+            ("defect", REVIEW, "CRITICAL"),  # E5-hard — REVIEW는 escape가 아니다
+            ("defect", OK, "CRITICAL"),  # 태그 없음 (E5가 아닌 불량)
+            ("normal", OK, "none"),
+        ]
+    )
+    for row, tags in zip(rows, (["E5-extreme"], ["E5-extreme"], ["E5-hard"], [], []), strict=True):
+        row["experiment_tags"] = tags
+    confusion = evaluate(rows, preds)["similar_label_confusion_rate"]
+    assert {k: (v["k"], v["n"]) for k, v in confusion.items()} == {
+        "extreme": (1, 2),
+        "hard": (0, 1),
+    }
+
+
+def test_similar_label_confusion_rate_empty_without_e5_tags() -> None:
+    """public track처럼 E5 태그가 없으면 빈 dict — 0%가 아니라 '해당 없음'이다."""
+    rows, preds = _rows_preds([("defect", OK, None), ("normal", OK, "none")])
+    assert evaluate(rows, preds)["similar_label_confusion_rate"] == {}

@@ -238,12 +238,59 @@ def render_roi(
 
 
 # ------------------------------------------------------------
+# E5 — 두 Label Identity가 얼마나 헷갈리는가 (#35)
+# ------------------------------------------------------------
+E5_TIERS = ("easy", "medium", "hard", "extreme")
+SWAP_TYPES = ("wrong_label", "wrong_product_label")
+
+
+def similarity_tier(a: dict[str, Any], b: dict[str, Any]) -> str:
+    """experiment_scenarios E5의 4구간을 카탈로그에서 기계적으로 정한다. 위에서부터 첫 번째로 맞는 구간이다.
+
+    | 구간    | 규칙                                        | 예        |
+    | easy    | layout·palette·font 중 하나라도 다르다      | a-1 / c-1 |
+    | extreme | 겉모습과 인쇄 문자가 전부 같다 (바코드만 다름) | b-3 / b-4 |
+    | hard    | 같은 field, 같은 글자 수, 다른 글자 ≤ 2개    | a-2 / a-4 |
+    | medium  | 나머지 — 겉모습은 같고 내용이 여러 곳 다르다 | a-2 / b-2 |
+
+    사람이 쌍을 골라 적지 않는 이유: 카탈로그가 바뀌면 구간도 따라 바뀌어야 하고,
+    누락된 쌍(a-3 / b-3처럼 제품이 달라도 한 글자 차이인 쌍)이 생기지 않아야 한다.
+    """
+    if (a["layout"], a["palette"], a["font"]) != (b["layout"], b["palette"], b["font"]):
+        return "easy"
+    ta, tb = a["text"], b["text"]
+    if ta == tb:
+        return "extreme"
+    same_shape = ta.keys() == tb.keys() and all(len(ta[k]) == len(tb[k]) for k in ta)
+    if same_shape and sum(x != y for k in ta for x, y in zip(ta[k], tb[k], strict=True)) <= 2:
+        return "hard"
+    return "medium"
+
+
+def e5_pairs(labels: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
+    """구간별 (Recipe가 요구한 라벨, 대신 붙은 라벨) 순서쌍. 미등록 라벨은 E3 몫이라 뺀다."""
+    known = sorted(i for i, spec in labels.items() if spec.get("known", True))
+    pairs: dict[str, list[tuple[str, str]]] = {t: [] for t in E5_TIERS}
+    for a in known:
+        for b in known:
+            if a != b:
+                pairs[similarity_tier(labels[a], labels[b])].append((a, b))
+    return pairs
+
+
+# ------------------------------------------------------------
 # metadata row 생성
 # ------------------------------------------------------------
-Plan = tuple[str, int, str, str, str | None]  # (split, seq, revision, lot, defect_type)
+# (split, seq, revision, lot, defect_type, forced) — forced = (label_slot, 대신 붙일 라벨). E5 전용 unit만 쓴다
+Plan = tuple[str, int, str, str, str | None, tuple[str, str] | None]
 
 
-def _unit_plan(product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, Any]) -> list[Plan]:
+def _unit_plan(
+    product: dict[str, Any],
+    labels: dict[str, Any],
+    cfg: dict[str, Any],
+    e5: list[tuple[str, str, str]],
+) -> list[Plan]:
     """제품 1종의 unit 목록. defect_type이 None이면 정상 unit이다.
 
     - 미등록 라벨이 든 revision은 `test`에만 배정한다 (schema §4.2-3). 불량 unit에는 쓰지 않는다 —
@@ -251,6 +298,7 @@ def _unit_plan(product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, A
     - LOT도 test와 나머지를 분리한다 (§4.2-2).
     - 불량 unit은 정상 unit **뒤에** 이어 붙인다. 그래야 정상 unit의 seq·그림이 불량 설정과 무관하게 유지된다.
     - hold-out 유형(E4)은 val에 넣지 않는다 — calibration에서 본 적 없는 불량이어야 한다.
+    - E5 전용 unit(`e5` = [(defect_type, 요구된 라벨, 대신 붙일 라벨)])은 맨 뒤, test에만 둔다.
     """
     known_revs: list[str] = []
     unknown_revs: list[str] = []
@@ -271,7 +319,7 @@ def _unit_plan(product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, A
         n_known = total - n_unknown if split == "test" else total
         for i in range(total):
             revs = known_revs if i < n_known else unknown_revs
-            plan.append((split, seq, revs[i % len(revs)], lots[seq % len(lots)], None))
+            plan.append((split, seq, revs[i % len(revs)], lots[seq % len(lots)], None, None))
             seq += 1
 
     defects = cfg.get("defects") or {}
@@ -291,9 +339,18 @@ def _unit_plan(product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, A
                         known_revs[i % len(known_revs)],
                         lots[seq % len(lots)],
                         defect_type,
+                        None,
                     )
                 )
                 seq += 1
+
+    lots = lots_of("test")
+    for defect_type, expected, actual in e5:
+        rev, slot = next(
+            (r, s) for r in known_revs for s, i in product["revisions"][r].items() if i == expected
+        )
+        plan.append(("test", seq, rev, lots[seq % len(lots)], defect_type, (slot, actual)))
+        seq += 1
     return plan
 
 
@@ -307,7 +364,7 @@ def _row(
     expected_id: str, expected_spec: dict[str, Any], actual_id: str | None,
     actual_spec: dict[str, Any] | None, expected_position: dict[str, Any],
     actual_position: dict[str, Any] | None, defects: list[dict[str, str]],
-    is_known_defect: bool, lot: str, revision: str, split: str,
+    is_known_defect: bool, lot: str, revision: str, split: str, experiment_tags: list[str],
 ) -> dict[str, Any]:  # fmt: skip
     """row 1개. `expected_*`는 Recipe에서, `actual_*`는 실제로 그린 것에서 온다.
 
@@ -344,7 +401,7 @@ def _row(
         "production_lot": lot,
         "revision": revision,
         "split": split,
-        "experiment_tags": [],
+        "experiment_tags": experiment_tags,
     }
 
 
@@ -363,12 +420,23 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
         )
         for p, v in recipe["products"].items()
     }
-    rows: list[dict[str, Any]] = []
+    owner = {i: p for p, ids in owned.items() for i in ids}
 
+    # E5 전용 unit: 구간마다 n개를 그 구간의 순서쌍에 돌아가며 배정하고, 요구된 라벨의 제품에 둔다
+    e5: dict[str, list[tuple[str, str, str]]] = {p: [] for p in recipe["products"]}
+    n_e5 = cfg.get("e5_units_per_tier", 0)
+    for pairs in e5_pairs(labels).values():
+        for k in range(n_e5 if pairs else 0):
+            expected, actual = pairs[k % len(pairs)]
+            same = owner[expected] == owner[actual]
+            e5[owner[expected]].append((SWAP_TYPES[0] if same else SWAP_TYPES[1], expected, actual))
+
+    rows: list[dict[str, Any]] = []
     for product_id, product in recipe["products"].items():
         tol = product["tolerance"]
         others = [i for p, ids in owned.items() if p != product_id for i in ids]
-        for split, seq, revision, lot, defect_type in _unit_plan(product, labels, cfg):
+        plan = _unit_plan(product, labels, cfg, e5[product_id])
+        for split, seq, revision, lot, defect_type, forced in plan:
             unit_id = f"custom_pilot/{product_id}/{split}/{seq:05d}"
             out_dir = out_root / "images" / product_id / split
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -383,7 +451,14 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                 jitter[label_slot] = (rng, (float(dx), float(dy)), dtheta)
 
             broken: dict[str, synthetic.Mutation] = {}
-            if defect_type is not None:
+            if forced is not None:
+                slot, actual = forced
+                _, offset, dtheta = jitter[slot]
+                assert defect_type is not None
+                broken[slot] = synthetic.Mutation(
+                    defect_type, actual, labels[actual], offset, dtheta
+                )
+            elif defect_type is not None:
                 for label_slot in (str(s) for s in rng_for(unit_id).permutation(list(slots))):
                     rng, offset, dtheta = jitter[label_slot]
                     m = synthetic.mutate(
@@ -421,10 +496,13 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                         "theta": round(nominal["theta"] + dtheta, 3),
                         "unit": "mm",
                     }
-                defects = []
+                defects, tags = [], []
                 if m:
                     sev = synthetic.severity(overrides, product_id, label_slot, m)
                     defects = [{"type": m.defect_type, "severity": sev}]
+                if m and m.defect_type in SWAP_TYPES and actual_id is not None:
+                    # 라벨 바꿔치기는 무작위로 생긴 것이든 E5 전용이든 전부 구간 태그를 단다
+                    tags = [f"E5-{similarity_tier(labels[identity], labels[actual_id])}"]
                 rows.append(
                     _row(
                         sample_id=f"{unit_id}/{label_slot}",
@@ -443,6 +521,7 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                         lot=lot,
                         revision=revision,
                         split=split,
+                        experiment_tags=tags,
                     )
                 )
     return rows

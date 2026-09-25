@@ -27,5 +27,6 @@ def pilot_small(
     small["build"]["units_per_product"] = {"reference": 2, "train": 2, "val": 2, "test": 4}
     small["build"]["unknown_units_per_product"] = 2
     small["build"]["defects"] |= {"val_units_per_type": 1, "test_units_per_type": 2}
+    small["build"]["e5_units_per_tier"] = 2
     root = tmp_path_factory.mktemp("pilot_small")
     return small, build(small, root), root
