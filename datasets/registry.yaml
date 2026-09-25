@@ -38,3 +38,15 @@ visa:
   sha256: 2eb8690c803ab37de0324772964100169ec8ba1fa3f7e94291c9ca673f40f362
   license: CC BY 4.0                # 상업 이용 가능 (아카이브 동봉 LICENSE-DATASET 확인)
   downloaded: 2026-09-21
+
+pilot:
+  version: "0.1"                    # 자체 Multi-Product Multi-Label benchmark, Pilot 규모 (기준 문서 §24)
+  schema: v1.1
+  converter: src/utils/pilot.py     # 생성: uv run experiments/build_pilot.py
+  root: datasets/custom/pilot
+  metadata: datasets/custom/pilot/metadata.jsonl
+  recipe: configs/recipes/pilot.yaml
+  source: 생성물 — 원본 아카이브가 없다. Recipe + 변환기 + sample_id seed만으로 결정된다
+  sha256: ec33376bf326cdd82bce72cce631500ef6e07e8c215cdab5ed0908c53acfcba3   # 원본 아카이브 대신 **Recipe 파일**의 해시다. 바뀌면 version을 올린다
+  license: 이 저장소와 동일. 라벨은 전부 합성이고 외부 이미지를 쓰지 않는다 (#6와 무관)
+  downloaded: null                  # 받은 데이터가 아니다
