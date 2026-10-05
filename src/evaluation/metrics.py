@@ -1,12 +1,15 @@
-"""reports/evaluation_protocol.md §0~§2, §3(Similar-label Confusion Rate), §5, §6 의 코드 정본.
+"""reports/evaluation_protocol.md §0~§6 의 코드 정본.
 
 REVIEW 처리 규칙 (ADR 0002):
 - DER / FPR: REVIEW는 escape도 false reject도 아니다 (3-state 그대로).
 - Precision / Recall / F1: 2-state 지표이므로 REVIEW를 NG로 합친다. 따라서 Recall = 1 - DER.
 - Review Rate: 전체 중 REVIEW 비율. 별도 비용 지표.
+- FPR(2-state): REVIEW를 NG로 합친 과검률. 2-state 선행 연구 비교용. DER은 두 방식이 같다.
 
 모든 비율 지표는 분자/분모와 Clopper-Pearson(exact) 양측 95% 신뢰구간을 함께 낸다 (ADR 0005).
-집계 단위는 입력 row 그대로다. Label/Product-level 집계는 #37.
+최상위 지표는 입력 row(Defect-level) 단위다. `label_level`은 (unit_id, label_slot),
+`product_level`은 unit_id로 묶어 같은 지표를 다시 낸다 (§4, ADR 0003): 판정은 최악값
+(NG > REVIEW > OK, severity 무관), 정답은 하나라도 불량이면 불량, score는 최댓값.
 """
 
 from __future__ import annotations
@@ -20,7 +23,8 @@ from scipy.stats import binomtest
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 OK, REVIEW, NG = "OK", "REVIEW", "NG"
-DECISIONS = (OK, REVIEW, NG)
+DECISIONS = (OK, REVIEW, NG)  # 나쁜 순서로 정렬돼 있다 — max(key=DECISIONS.index)가 최악값
+UNKNOWN = "UNKNOWN"  # predicted_label_id: 등록되지 않은 라벨로 거부
 REVIEW_POLICY = (
     "DER/FPR: REVIEW is neither escape nor false reject; precision/recall/F1: REVIEW merged into NG"
 )
@@ -73,11 +77,28 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
             f"예측이 평가 대상과 다르다 (누락 {missing[:5]}, rows {len(rows)}, preds {len(preds)})"
         )
 
-    is_defect = [r["normal_or_defect"] == "defect" for r in rows]
     decision = [by_id[r["sample_id"]]["decision"] for r in rows]
     score = [by_id[r["sample_id"]]["anomaly_score"] for r in rows]
     if bad := sorted(set(decision) - set(DECISIONS)):
         raise ValueError(f"알 수 없는 decision: {bad}")
+
+    return {
+        "review_policy": REVIEW_POLICY,
+        **_decision_metrics(rows, decision, score),
+        "defect_escape_rate_by_category": _der_by(rows, decision, "defect_category"),
+        "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
+        "similar_label_confusion_rate": _der_by(*_e5_subset(rows, decision), "e5_tier"),
+        **_identity(rows, [by_id[r["sample_id"]].get("predicted_label_id") for r in rows]),
+        "label_level": _decision_metrics(*_group(rows, decision, score, ("unit_id", "label_slot"))),
+        "product_level": _decision_metrics(*_group(rows, decision, score, ("unit_id",))),
+    }
+
+
+def _decision_metrics(
+    rows: list[dict[str, Any]], decision: list[str], score: list[float]
+) -> dict[str, Any]:
+    """판정 지표 묶음. rows는 normal_or_defect와 defect_severity만 쓴다 — 어느 집계 단위든 같다."""
+    is_defect = [r["normal_or_defect"] == "defect" for r in rows]
 
     def count(kind: bool, dec: str) -> int:
         return sum(d == kind and x == dec for d, x in zip(is_defect, decision, strict=True))
@@ -91,7 +112,6 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
 
     return {
         "n": len(rows),
-        "review_policy": REVIEW_POLICY,
         "confusion": {
             "normal": {x: count(False, x) for x in DECISIONS},
             "defect": {x: count(True, x) for x in DECISIONS},
@@ -101,15 +121,56 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
             sum(c and x == OK for c, x in zip(critical, decision, strict=True)), sum(critical)
         ),
         "false_positive_rate": rate(count(False, NG), n_norm),
+        "false_positive_rate_2state": rate(fp, n_norm),
         "review_rate": rate(decision.count(REVIEW), len(rows)),
         "precision": precision,
         "recall": recall,
         "f1": 2 * p * r / (p + r) if p is not None and r is not None and p + r > 0 else None,
         "auroc": float(roc_auc_score(is_defect, score)) if n_def and n_norm else None,
         "auprc": float(average_precision_score(is_defect, score)) if n_def and n_norm else None,
-        "defect_escape_rate_by_category": _der_by(rows, decision, "defect_category"),
-        "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
-        "similar_label_confusion_rate": _der_by(*_e5_subset(rows, decision), "e5_tier"),
+    }
+
+
+def _group(
+    rows: list[dict[str, Any]], decision: list[str], score: list[float], keys: tuple[str, ...]
+) -> tuple[list[dict[str, Any]], list[str], list[float]]:
+    """keys로 묶는다. 판정은 최악값(NG > REVIEW > OK), 하나라도 불량이면 불량, score는 최댓값 (§4)."""
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        groups[tuple(row[k] for k in keys)].append(i)
+    members = list(groups.values())
+    return (
+        [
+            {
+                "normal_or_defect": "defect"
+                if any(rows[i]["normal_or_defect"] == "defect" for i in m)
+                else "normal",
+                "defect_severity": "CRITICAL"
+                if any(rows[i].get("defect_severity") == "CRITICAL" for i in m)
+                else None,
+            }
+            for m in members
+        ],
+        [max((decision[i] for i in m), key=DECISIONS.index) for m in members],
+        [max(score[i] for i in m) for m in members],
+    )
+
+
+def _identity(rows: list[dict[str, Any]], predicted: list[str | None]) -> dict[str, Any]:
+    """Label Identity 지표 (§3). identity를 내지 않는 모델(전부 None)은 분모 0 → 정의되지 않음.
+
+    라벨이 없는 row(missing_label, actual_label_id=None)는 맞힐 라벨이 없으므로 뺀다.
+    Unknown을 등록 라벨로 억지 분류한 것은 오답과 따로 `unknown_forced_rate`로 센다.
+    """
+    pairs = [] if all(p is None for p in predicted) else list(zip(rows, predicted, strict=True))
+    known = [
+        (r, p) for r, p in pairs if r.get("is_known_label") is True and r.get("actual_label_id")
+    ]
+    unknown = [p for r, p in pairs if r.get("is_known_label") is False]
+    return {
+        "known_label_accuracy": rate(sum(p == r["actual_label_id"] for r, p in known), len(known)),
+        "unknown_label_detection_rate": rate(unknown.count(UNKNOWN), len(unknown)),
+        "unknown_forced_rate": rate(sum(p not in (None, UNKNOWN) for p in unknown), len(unknown)),
     }
 
 

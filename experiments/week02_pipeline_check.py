@@ -61,10 +61,15 @@ def score_all(rows: list[dict], rng: np.random.Generator) -> list[dict]:
 
 
 def flat_metrics(metrics: dict[str, Any]) -> dict[str, float]:
-    """MLflow용. 비율 지표는 value/k/n/ci95 로 펼친다. 정의되지 않은 값(None)은 뺀다."""
+    """MLflow용. 비율 지표는 value/k/n/ci95 로 펼친다. 정의되지 않은 값(None)은 뺀다.
+
+    `label_level` / `product_level`은 이름 뒤에 `_label` / `_product`를 붙인다 (protocol §9).
+    """
     out: dict[str, float] = {}
     for name, v in metrics.items():
-        if isinstance(v, dict) and "k" in v:
+        if name.endswith("_level"):
+            out |= {f"{k}_{name.removesuffix('_level')}": x for k, x in flat_metrics(v).items()}
+        elif isinstance(v, dict) and "k" in v:
             out |= {f"{name}_k": v["k"], f"{name}_n": v["n"]}
             if v["value"] is not None:
                 out |= {name: v["value"], f"{name}_ci95_low": v["ci95"][0]}

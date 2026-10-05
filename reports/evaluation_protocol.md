@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.6
+# Evaluation Protocol v0.7
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -30,6 +30,7 @@ REVIEW  : 판정 보류 → 사람이 확인
 | 지표 | `REVIEW` 처리 |
 |---|---|
 | DER / CDER / FPR | 3-state 그대로. `REVIEW`는 escape도 false reject도 아니다 |
+| FPR (2-state) | **`REVIEW`를 NG로 합친다** (`false_positive_rate_2state`). 2-state 선행 연구 비교용. DER은 두 방식이 같다 — `REVIEW`는 어느 쪽이든 `OK`가 아니다 |
 | Precision / Recall / F1 | 2-state. **`REVIEW`를 NG로 합친다.** 따라서 Recall = 1 − DER |
 | Review Rate | 전체 중 `REVIEW` 비율 |
 | AUROC / AUPRC | threshold-free. score만 쓴다 |
@@ -88,12 +89,18 @@ positive = defect 기준.
 | 지표 | 정의 |
 |---|---|
 | **Known Label Accuracy** | `is_known_label=true` 샘플에서 `actual_label_id`를 맞춘 비율 |
-| **Unknown Label Detection Rate** | `is_known_label=false` 샘플을 `UNKNOWN`으로 거부한 비율 (= 1 − 오분류율) |
+| **Unknown Label Detection Rate** | `is_known_label=false` 샘플을 `UNKNOWN`으로 거부한 비율 |
+| **Unknown Forced Rate** | `is_known_label=false` 샘플을 **등록 라벨 id로 억지 분류**한 비율 (아래 경고의 별도 실패 유형) |
 | **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
 | Open-set 상태 정확도 | `KNOWN_EXPECTED` / `KNOWN_WRONG` / `UNKNOWN` 3-class 정확도 |
 
 > **Unknown을 기존 class로 억지 분류한 경우는 단순 오분류가 아니라 별도 실패 유형으로 집계한다.**
 > 이것이 현장에서 가장 위험한 실패 모드다.
+
+Identity 지표는 `predictions.csv`의 `predicted_label_id`만 쓴다 (§9.1). 거부는 문자열 `UNKNOWN`이다.
+- `actual_label_id`가 없는 row(`missing_label` — 맞힐 라벨이 없다)는 Known Label Accuracy에서 뺀다.
+- Unknown row에서 답이 비어 있으면 거부도 억지 분류도 아니다. 그래서 Detection + Forced ≤ 1이다.
+- `predicted_label_id`를 **전혀** 내지 않는 모델(AD 단독)은 세 지표 모두 정의되지 않는다(`null`). 0%가 아니다.
 
 **Similar-label Confusion Rate를 escape로 정의한 이유**: 라벨 A 자리에 A와 닮은 B가 붙었는데 `OK`가 나왔다면,
 시스템이 B를 A로 혼동한 것이다. 이 정의는 판정(`decision`)만 쓰므로 identity를 출력하지 않는 AD 모델에도
@@ -122,6 +129,11 @@ NG 없고 하나라도 REVIEW  → Product REVIEW
 ```
 
 **NG가 REVIEW보다 우선한다.** 한 제품에 NG 라벨과 REVIEW 라벨이 함께 있으면 Product NG다.
+
+정답 쪽도 같은 방식으로 묶는다: 라벨·제품 안에 불량 row가 하나라도 있으면 불량, `CRITICAL`이 하나라도
+있으면 CDER 분모에 들어간다. AUROC/AUPRC용 score는 최댓값이다. 같은 `(unit_id, label_slot)`의 row가 여러 개
+(카메라)면 Label-level에서 판정 최악값 하나로 합친다. 코드: `evaluate()`의 `label_level` / `product_level` —
+최상위(Defect-level)와 같은 지표 묶음이다.
 
 `CRITICAL`만 Product NG로 보는 안은 택하지 않았다 — 그러면 찢어진 라벨(`MAJOR`)이 붙은 제품이
 Product-level에서 정상으로 집계된다. `CRITICAL`은 Critical Defect Escape Rate로 이미 별도
@@ -236,7 +248,8 @@ Camera acquisition
 
 [metrics] defect_escape_rate, critical_defect_escape_rate,
           false_positive_rate, precision, recall, f1, auprc, auroc,
-          known_label_accuracy, unknown_label_detection_rate,
+          false_positive_rate_2state,
+          known_label_accuracy, unknown_label_detection_rate, unknown_forced_rate,
           review_rate_label, review_rate_product,
           latency_p50, latency_p95, latency_p99
 
@@ -244,7 +257,8 @@ Camera acquisition
 ```
 
 비율 지표는 `{name}`(값) 외에 `{name}_k`, `{name}_n`, `{name}_ci95_low`, `{name}_ci95_high`를 함께
-기록한다. 분모가 0인 지표(예: public track의 CDER)는 값을 기록하지 않고 `metrics.json`에 `null`로 남긴다.
+기록한다. Label/Product-level 지표는 이름 뒤에 `_label` / `_product`를 붙인다(예: `review_rate_product`,
+`defect_escape_rate_k_label`). 분모가 0인 지표(예: public track의 CDER)는 값을 기록하지 않고 `metrics.json`에 `null`로 남긴다.
 
 ### 9.1 예측 파일 (`predictions.csv`)
 
@@ -256,7 +270,7 @@ Camera acquisition
 | `sample_id` | metadata 조인 키 |
 | `decision` | `OK` / `REVIEW` / `NG` |
 | `anomaly_score` | 판정 전 score (클수록 이상) |
-| `predicted_label_id` | Label Identity 예측. 없으면 빈 값 |
+| `predicted_label_id` | Label Identity 예측. 등록되지 않은 라벨로 거부하면 `UNKNOWN`. identity를 내지 않는 모델은 빈 값 |
 | `latency_ms` | 샘플 1건 처리 시간 |
 | `image_path`, `normal_or_defect`, `defect_type` | 실패 분석용으로 metadata에서 복사한 ground truth |
 
@@ -292,3 +306,4 @@ Camera acquisition
 | v0.4 | 2026-09-21 | §6 threshold 기본 규칙 확정: val 정상 분위수(f=1%, r=10%), f는 제품 단위 목표에서 역산 (#30) |
 | v0.5 | 2026-09-21 | §2 DER 분해(defect_category별 / defect_type별) 추가 (#32) |
 | v0.6 | 2026-09-25 | §3 Similar-label Confusion Rate 정의: E5 구간별 바꿔치기 불량의 DER (#35). 코드 `similar_label_confusion_rate` |
+| v0.7 | 2026-10-06 | §4 Label/Product-level 집계 구현(정답·score 묶는 규칙 명시), §0 FPR 2-state, §3 Unknown Forced Rate와 identity 지표 분모 규칙, §9 level 접미사, §9.1 `UNKNOWN` (#37) |
