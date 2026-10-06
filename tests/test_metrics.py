@@ -1,4 +1,4 @@
-"""reports/evaluation_protocol.md §0~§2, §5, §6 을 코드와 1:1로 맞추는 테스트."""
+"""reports/evaluation_protocol.md §0~§6 을 코드와 1:1로 맞추는 테스트."""
 
 from __future__ import annotations
 
@@ -8,14 +8,17 @@ from collections.abc import Sequence
 import numpy as np
 import pytest
 
-from src.evaluation.metrics import NG, OK, REVIEW, calibrate, decide, evaluate, rate
+from src.evaluation.metrics import NG, OK, REVIEW, UNKNOWN, calibrate, decide, evaluate, rate
 
 
 def _rows_preds(cases: Sequence[tuple[str, str, str | None]]) -> tuple[list[dict], list[dict]]:
     """(normal_or_defect, decision, defect_severity) 목록 → metadata rows, predictions."""
     rows, preds = [], []
     for i, (kind, decision, severity) in enumerate(cases):
-        rows.append({"sample_id": f"s{i}", "normal_or_defect": kind, "defect_severity": severity})
+        rows.append(
+            {"sample_id": f"s{i}", "unit_id": f"u{i}", "label_slot": "-"}
+            | {"normal_or_defect": kind, "defect_severity": severity}
+        )
         score = {OK: 0.1, REVIEW: 0.5, NG: 0.9}[decision]
         preds.append({"sample_id": f"s{i}", "decision": decision, "anomaly_score": score})
     return rows, preds
@@ -269,3 +272,97 @@ def test_similar_label_confusion_rate_empty_without_e5_tags() -> None:
     """public track처럼 E5 태그가 없으면 빈 dict — 0%가 아니라 '해당 없음'이다."""
     rows, preds = _rows_preds([("defect", OK, None), ("normal", OK, "none")])
     assert evaluate(rows, preds)["similar_label_confusion_rate"] == {}
+
+
+# --- §4 Label / Product-level 집계 (ADR 0003) ---
+
+
+def _units(units: dict[str, list[tuple[str, str, str, str | None]]]) -> tuple[list, list]:
+    """{unit_id: [(label_slot, normal_or_defect, decision, severity), ...]} → rows, preds."""
+    cases = [(kind, dec, sev) for labels in units.values() for _, kind, dec, sev in labels]
+    rows, preds = _rows_preds(cases)
+    keys = [(u, slot) for u, labels in units.items() for slot, *_ in labels]
+    for row, (unit, slot) in zip(rows, keys, strict=True):
+        row |= {"unit_id": unit, "label_slot": slot}
+    return rows, preds
+
+
+def test_product_level_ng_beats_review_regardless_of_severity() -> None:
+    rows, preds = _units(
+        {
+            "u-ng": [("s1", "normal", NG, None), ("s2", "defect", REVIEW, "MAJOR")],
+            "u-escape": [("s1", "defect", OK, "MAJOR"), ("s2", "normal", OK, None)],
+            "u-review": [("s1", "normal", REVIEW, None), ("s2", "normal", OK, None)],
+            "u-ok": [("s1", "normal", OK, None), ("s2", "normal", OK, None)],
+        }
+    )
+    product = evaluate(rows, preds)["product_level"]
+    assert product["confusion"] == {
+        "normal": {OK: 1, REVIEW: 1, NG: 0},
+        "defect": {OK: 1, REVIEW: 0, NG: 1},  # u-ng: NG 라벨이 REVIEW보다 우선
+    }
+    assert (product["defect_escape_rate"]["k"], product["defect_escape_rate"]["n"]) == (1, 2)
+    assert product["review_rate"]["k"] == 1
+
+
+def test_product_level_cder_follows_critical_label() -> None:
+    rows, preds = _units({"u1": [("s1", "defect", OK, "CRITICAL"), ("s2", "defect", NG, "MINOR")]})
+    m = evaluate(rows, preds)
+    assert m["critical_defect_escape_rate"]["k"] == 1  # 라벨 단위로는 새었다
+    assert m["product_level"]["critical_defect_escape_rate"]["k"] == 0  # 제품은 NG로 걸렸다
+
+
+def test_label_level_merges_cameras_of_same_label() -> None:
+    """같은 (unit_id, label_slot)의 row 여러 개(카메라)는 라벨 하나다. 판정은 최악값."""
+    rows, preds = _units({"u1": [("s1", "normal", OK, None), ("s1", "normal", REVIEW, None)]})
+    label = evaluate(rows, preds)["label_level"]
+    assert label["n"] == 1
+    assert label["confusion"]["normal"] == {OK: 0, REVIEW: 1, NG: 0}
+
+
+def test_false_positive_rate_2state_merges_review() -> None:
+    rows, preds = _rows_preds(
+        [("normal", REVIEW, None), ("normal", NG, None), ("normal", OK, None)]
+    )
+    m = evaluate(rows, preds)
+    assert m["false_positive_rate"]["k"] == 1
+    assert m["false_positive_rate_2state"]["k"] == 2
+
+
+# --- §3 Known / Unknown Label ---
+
+
+def _identity_case(cases: list[tuple[bool, str | None, str | None]]) -> dict:
+    """(is_known_label, actual_label_id, predicted_label_id) 목록 → evaluate 결과."""
+    rows, preds = _rows_preds([("normal", OK, None)] * len(cases))
+    for row, pred, (known, actual, predicted) in zip(rows, preds, cases, strict=True):
+        row |= {"is_known_label": known, "actual_label_id": actual}
+        pred["predicted_label_id"] = predicted
+    return evaluate(rows, preds)
+
+
+def test_identity_metrics_count_forced_unknown_separately() -> None:
+    m = _identity_case(
+        [
+            (True, "a-1", "a-1"),
+            (True, "a-2", "a-1"),  # 오답
+            (True, "a-3", UNKNOWN),  # 등록 라벨을 거부 — 오답
+            (True, None, None),  # missing_label: 맞힐 라벨이 없다 → 제외
+            (False, "u-1", UNKNOWN),  # 거부 성공
+            (False, "u-2", "a-1"),  # 억지 분류
+            (False, "u-2", None),  # 답 없음 — 거부도 억지 분류도 아니다
+        ]
+    )
+    assert (m["known_label_accuracy"]["k"], m["known_label_accuracy"]["n"]) == (1, 3)
+    assert (m["unknown_label_detection_rate"]["k"], m["unknown_label_detection_rate"]["n"]) == (
+        1,
+        3,
+    )
+    assert (m["unknown_forced_rate"]["k"], m["unknown_forced_rate"]["n"]) == (1, 3)
+
+
+def test_identity_metrics_undefined_without_identity_output() -> None:
+    """AD 모델처럼 predicted_label_id를 전혀 내지 않으면 0%가 아니라 '정의되지 않음'."""
+    m = _identity_case([(True, "a-1", None), (False, "u-1", None)])
+    for name in ("known_label_accuracy", "unknown_label_detection_rate", "unknown_forced_rate"):
+        assert m[name]["value"] is None
