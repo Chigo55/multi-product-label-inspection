@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import tempfile
 import time
@@ -28,15 +27,16 @@ from src.evaluation.latency import Stage, environment, measure, summarize
 from src.evaluation.metrics import calibrate, decide, evaluate
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
-from src.utils.tracking import git_commit, git_is_dirty, start_experiment
+from src.utils.tracking import (
+    flat_metrics,
+    git_commit,
+    git_is_dirty,
+    start_experiment,
+    write_predictions,
+)
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week02_pipeline_check.yaml"
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
-# 예측 레코드(sample_id ~ latency_ms) + 실패 분석용 ground truth 열
-PRED_COLUMNS = (
-    "sample_id", "decision", "anomaly_score", "predicted_label_id", "latency_ms",
-    "image_path", "normal_or_defect", "defect_type",
-)  # fmt: skip
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -67,33 +67,6 @@ def dummy_pipeline(_row: dict, stage: Stage) -> None:
         pass
 
 
-def flat_metrics(metrics: dict[str, Any]) -> dict[str, float]:
-    """MLflow용. 비율 지표는 value/k/n/ci95 로 펼친다. 정의되지 않은 값(None)은 뺀다.
-
-    `label_level` / `product_level`은 이름 뒤에 `_label` / `_product`를 붙인다 (protocol §9).
-    """
-    out: dict[str, float] = {}
-    for name, v in metrics.items():
-        if name.endswith("_level"):
-            out |= {f"{k}_{name.removesuffix('_level')}": x for k, x in flat_metrics(v).items()}
-        elif isinstance(v, dict) and "k" in v:
-            out |= {f"{name}_k": v["k"], f"{name}_n": v["n"]}
-            if v["value"] is not None:
-                out |= {name: v["value"], f"{name}_ci95_low": v["ci95"][0]}
-                out[f"{name}_ci95_high"] = v["ci95"][1]
-        elif isinstance(v, int | float):
-            out[name] = v
-    return out
-
-
-def write_predictions(path: Path, rows: list[dict], preds: list[dict]) -> None:
-    by_id = {r["sample_id"]: r for r in rows}
-    with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=PRED_COLUMNS, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(by_id[p["sample_id"]] | p for p in preds)
-
-
 def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     ds = cfg["dataset"]
@@ -113,12 +86,9 @@ def main() -> None:
         )
 
     rng = np.random.default_rng(cfg["experiment"]["seed"])
-    val_scores = [
-        p["anomaly_score"]
-        for r, p in zip(val, score_all(val, rng), strict=True)
-        if r["normal_or_defect"] == "normal"
-    ]
-    t_ok, t_ng = calibrate(val_scores, dec["normal_ng_rate"], dec["normal_review_rate"])
+    val_scores = [p["anomaly_score"] for p in score_all(val, rng)]
+    t_ok, t_ng = calibrate(val, val_scores, dec["normal_ng_rate"], dec["normal_review_rate"])
+    n_val_normal = sum(r["normal_or_defect"] == "normal" for r in val)
     preds = [p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)} for p in score_all(test, rng)]
     metrics = evaluate(test, preds)
     lat_cfg = cfg["latency"]
@@ -149,7 +119,7 @@ def main() -> None:
                 "model_name": cfg["model"]["name"],
                 "threshold_ok": t_ok,
                 "threshold_ng": t_ng,
-                "threshold_source": f"{dec['calibration_split']} normal quantile (n={len(val_scores)})",
+                "threshold_source": f"{dec['calibration_split']} normal quantile (n={n_val_normal})",
                 "normal_ng_rate": dec["normal_ng_rate"],
                 "normal_review_rate": dec["normal_review_rate"],
                 "seed": cfg["experiment"]["seed"],
@@ -178,7 +148,7 @@ def main() -> None:
 
     der, cder = metrics["defect_escape_rate"], metrics["critical_defect_escape_rate"]
     print(f"run_id : {run.info.run_id}  ({cfg['tracking']['experiment_name']})")
-    print(f"thresh : ok={t_ok:.3f} ng={t_ng:.3f}  (val 정상 {len(val_scores)}장 분위수)")
+    print(f"thresh : ok={t_ok:.3f} ng={t_ng:.3f}  (val 정상 {n_val_normal}장 분위수)")
     print(f"test   : {len(test)} samples  confusion {metrics['confusion']}")
     print(f"DER    : {der['k']} / {der['n']} escaped = {der['value']:.2%}  95% CI {der['ci95']}")
     print(f"CDER   : {'N/A (Recipe severity 없음)' if cder['value'] is None else cder}")

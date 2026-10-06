@@ -190,24 +190,29 @@ def test_values_are_finite_floats() -> None:
 # --- §6 threshold calibration: val 정상 score 분위수 (schema §4.3 안 A) ---
 
 
+def _val(scores: Sequence[float]) -> list[dict]:
+    return [{"split": "val", "normal_or_defect": "normal"} for _ in scores]
+
+
 def test_calibrate_quantiles() -> None:
-    t_ok, t_ng = calibrate(
-        [float(s) for s in range(100)], normal_ng_rate=0.01, normal_review_rate=0.1
-    )
+    scores = [float(s) for s in range(100)]
+    t_ok, t_ng = calibrate(_val(scores), scores, normal_ng_rate=0.01, normal_review_rate=0.1)
     assert (t_ok, t_ng) == (90.0, 99.0)
 
 
 def test_calibrate_small_val_uses_max_for_ng() -> None:
     # val 42장이면 1% 해상도가 없다 → t_ng = 최고 점수 (val 정상은 하나도 NG가 아님)
     scores = [i / 42 for i in range(42)]
-    assert calibrate(scores, normal_ng_rate=0.01, normal_review_rate=0.1)[1] == max(scores)
+    assert calibrate(_val(scores), scores, normal_ng_rate=0.01, normal_review_rate=0.1)[1] == max(
+        scores
+    )
 
 
 def test_calibrated_val_ng_rate_never_exceeds_target() -> None:
     rng = np.random.default_rng(0)
     for n in (5, 42, 167, 1000):
         scores = rng.random(n).tolist()
-        t_ok, t_ng = calibrate(scores, normal_ng_rate=0.05, normal_review_rate=0.2)
+        t_ok, t_ng = calibrate(_val(scores), scores, normal_ng_rate=0.05, normal_review_rate=0.2)
         decisions = [decide(s, t_ok, t_ng) for s in scores]
         assert decisions.count(NG) <= 0.05 * n
         assert t_ok <= t_ng
@@ -219,7 +224,19 @@ def test_calibrated_val_ng_rate_never_exceeds_target() -> None:
 )
 def test_calibrate_rejects_bad_input(scores: list[float], f: float, r: float) -> None:
     with pytest.raises(ValueError):
-        calibrate(scores, normal_ng_rate=f, normal_review_rate=r)
+        calibrate(_val(scores), scores, normal_ng_rate=f, normal_review_rate=r)
+
+
+def test_calibrate_refuses_non_val_rows() -> None:
+    """test로 threshold를 정하는 경로를 코드가 막는다 (§6)."""
+    rows = [*_val([0.1, 0.2]), {"split": "test", "normal_or_defect": "normal"}]
+    with pytest.raises(ValueError, match="val로만"):
+        calibrate(rows, [0.1, 0.2, 0.3], normal_ng_rate=0.01, normal_review_rate=0.1)
+
+
+def test_calibrate_ignores_defect_rows() -> None:
+    rows = [*_val([0.1] * 10), {"split": "val", "normal_or_defect": "defect"}]
+    assert calibrate(rows, [*[0.1] * 10, 99.0], 0.0, 0.0) == (0.1, 0.1)
 
 
 # --- E4 public 보고: 결함 분류·유형별 DER (reports/experiment_scenarios.md) ---
@@ -366,3 +383,35 @@ def test_identity_metrics_undefined_without_identity_output() -> None:
     m = _identity_case([(True, "a-1", None), (False, "u-1", None)])
     for name in ("known_label_accuracy", "unknown_label_detection_rate", "unknown_forced_rate"):
         assert m[name]["value"] is None
+
+
+# --- E3 주 기준과 Open-set 3-state (§3) ---
+
+
+def test_unknown_label_ok_rate_uses_decision_only() -> None:
+    """미등록 라벨 row가 OK로 나간 비율. identity 출력이 없어도 계산된다."""
+    rows, preds = _rows_preds(
+        [("normal", OK, None), ("normal", REVIEW, None), ("normal", OK, None)]
+    )
+    for row, known in zip(rows, (False, False, True), strict=True):
+        row["is_known_label"] = known
+    r = evaluate(rows, preds)["unknown_label_ok_rate"]
+    assert (r["k"], r["n"]) == (1, 2)
+
+
+def test_open_set_accuracy_three_states() -> None:
+    cases = [
+        # (is_known, expected, actual, predicted) → 맞으면 True
+        (True, "a-1", "a-1", "a-1"),  # KNOWN_EXPECTED == KNOWN_EXPECTED
+        (True, "a-1", "b-3", "b-2"),  # KNOWN_WRONG == KNOWN_WRONG (어떤 틀린 라벨인지는 안 본다)
+        (True, "a-1", "b-3", "a-1"),  # KNOWN_WRONG != KNOWN_EXPECTED
+        (False, "u-1", "u-1", UNKNOWN),  # UNKNOWN == UNKNOWN
+        (False, "u-1", "u-1", "a-1"),  # 억지 분류
+        (True, "a-1", None, None),  # missing_label → 제외
+    ]
+    rows, preds = _rows_preds([("normal", OK, None)] * len(cases))
+    for row, pred, (known, expected, actual, predicted) in zip(rows, preds, cases, strict=True):
+        row |= {"is_known_label": known, "expected_label_id": expected, "actual_label_id": actual}
+        pred["predicted_label_id"] = predicted
+    acc = evaluate(rows, preds)["open_set_accuracy"]
+    assert (acc["k"], acc["n"]) == (3, 5)

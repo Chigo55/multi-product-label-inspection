@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.8
+# Evaluation Protocol v0.9
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -92,7 +92,8 @@ positive = defect 기준.
 | **Unknown Label Detection Rate** | `is_known_label=false` 샘플을 `UNKNOWN`으로 거부한 비율 |
 | **Unknown Forced Rate** | `is_known_label=false` 샘플을 **등록 라벨 id로 억지 분류**한 비율 (아래 경고의 별도 실패 유형) |
 | **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
-| Open-set 상태 정확도 | `KNOWN_EXPECTED` / `KNOWN_WRONG` / `UNKNOWN` 3-class 정확도 |
+| **Unknown Label OK Rate** | `is_known_label=false` row 중 판정이 `OK`인 비율 (`unknown_label_ok_rate`). **E3의 주 성공 기준**(0건 + 상한). 판정만 쓰므로 identity를 내지 않는 AD 모델에도 적용된다 |
+| Open-set 상태 정확도 | `KNOWN_EXPECTED` / `KNOWN_WRONG` / `UNKNOWN` 3-class 정확도 (`open_set_accuracy`). 정답은 `is_known_label`과 `actual_label_id` vs `expected_label_id`, 예측은 `predicted_label_id` vs `expected_label_id`로 정한다. 어떤 틀린 라벨인지는 보지 않는다 |
 
 > **Unknown을 기존 class로 억지 분류한 경우는 단순 오분류가 아니라 별도 실패 유형으로 집계한다.**
 > 이것이 현장에서 가장 위험한 실패 모드다.
@@ -177,6 +178,7 @@ Observed CDER:
 ## 6. Threshold 정책
 
 - threshold는 **test set으로 정하지 않는다.** 반드시 `val`(또는 calibration split)에서 결정한다.
+  **코드가 강제한다**: `calibrate(rows, scores, f, r)`는 `split`이 `val`이 아닌 row가 하나라도 있으면 멈춘다(#39).
 - **기본 규칙: val 정상 score 분위수** (코드: `calibrate()` in `src/evaluation/metrics.py`)
 
   ```text
@@ -254,13 +256,14 @@ Camera acquisition
 
 ```text
 [params]  git_commit, dataset_version, config_path, model_name,
-          threshold_ok, threshold_ng, n_shot, seed, device,
+          threshold_ok, threshold_ng (Pilot은 제품별: threshold_ok_A …), n_shot, seed, device,
           latency_batch_size, latency_resolution, latency_precision, host_platform, host_cpu, python (+ gpu, cuda)
 
 [metrics] defect_escape_rate, critical_defect_escape_rate,
           false_positive_rate, precision, recall, f1, auprc, auroc,
           false_positive_rate_2state,
           known_label_accuracy, unknown_label_detection_rate, unknown_forced_rate,
+          unknown_label_ok_rate, open_set_accuracy,
           review_rate_label, review_rate_product,
           latency_n, latency_p50, latency_p95, latency_p99
 
@@ -319,3 +322,4 @@ Camera acquisition
 | v0.6 | 2026-09-25 | §3 Similar-label Confusion Rate 정의: E5 구간별 바꿔치기 불량의 DER (#35). 코드 `similar_label_confusion_rate` |
 | v0.7 | 2026-10-06 | §4 Label/Product-level 집계 구현(정답·score 묶는 규칙 명시), §0 FPR 2-state, §3 Unknown Forced Rate와 identity 지표 분모 규칙, §9 level 접미사, §9.1 `UNKNOWN` (#37) |
 | v0.8 | 2026-10-06 | §7 latency 측정 규칙 구현(벽시계 total, 구간 이름 고정, GPU sync, 시간대 경계, 보고용은 Jetson만 #5), §9 측정 환경 params (#38) |
+| v0.9 | 2026-10-06 | Month 1 Gate(#39): §3 Unknown Label OK Rate(E3 주 기준)·Open-set 정확도 코드화, §6 val 전용 calibration을 코드로 강제, §9 Pilot 제품별 threshold param과 신규 지표 |
