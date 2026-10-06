@@ -1,4 +1,4 @@
-"""Week 2 — 평가 레일 점검 (#40).
+"""Week 2 — 평가 레일 점검 (#40). latency 측정 레일은 #38.
 
     metadata.jsonl → schema 검증 → dummy score → val 정상으로 threshold 조정 → test 판정 → 평가 → MLflow
 
@@ -24,6 +24,7 @@ import numpy as np
 import yaml
 from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
+from src.evaluation.latency import Stage, environment, measure, summarize
 from src.evaluation.metrics import calibrate, decide, evaluate
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
@@ -58,6 +59,12 @@ def score_all(rows: list[dict], rng: np.random.Generator) -> list[dict]:
             }
         )
     return preds
+
+
+def dummy_pipeline(_row: dict, stage: Stage) -> None:
+    """latency 측정용 제품 1개 처리. 모델이 생기면 구간마다 실제 처리가 들어간다."""
+    with stage("anomaly"):
+        pass
 
 
 def flat_metrics(metrics: dict[str, Any]) -> dict[str, float]:
@@ -114,6 +121,16 @@ def main() -> None:
     t_ok, t_ng = calibrate(val_scores, dec["normal_ng_rate"], dec["normal_review_rate"])
     preds = [p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)} for p in score_all(test, rng)]
     metrics = evaluate(test, preds)
+    lat_cfg = cfg["latency"]
+    # 제품 1개 = test 샘플 1개 (public track은 L=1). dummy라 anomaly 구간만 있다
+    latency = summarize(
+        measure(
+            dummy_pipeline,
+            test,
+            warmup=lat_cfg["warmup_iters"],
+            iters=lat_cfg["measure_iters"],
+        )
+    )
 
     start_experiment(cfg["tracking"]["experiment_name"])
     with mlflow.start_run(run_name=f"dummy-{ds['category']}") as run:
@@ -136,14 +153,19 @@ def main() -> None:
                 "normal_ng_rate": dec["normal_ng_rate"],
                 "normal_review_rate": dec["normal_review_rate"],
                 "seed": cfg["experiment"]["seed"],
-                "device": cfg["latency"]["device"],
                 "num_train": sum(r["split"] == "train" for r in rows),
                 "num_val": len(val),
                 "num_test": len(test),
                 "review_policy": metrics["review_policy"],
             }
+            | environment(
+                lat_cfg["device"],
+                lat_cfg["batch_size"],
+                lat_cfg["resolution"],
+                lat_cfg["precision"],
+            )
         )
-        mlflow.log_metrics(flat_metrics(metrics))
+        mlflow.log_metrics(flat_metrics(metrics | latency))
         mlflow.log_artifact(str(CONFIG_PATH), artifact_path="config")
         mlflow.log_artifact(str(REGISTRY_PATH), artifact_path="config")
         with tempfile.TemporaryDirectory() as tmp:
@@ -151,6 +173,7 @@ def main() -> None:
             (Path(tmp) / "metrics.json").write_text(
                 json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8"
             )
+            (Path(tmp) / "latency.json").write_text(json.dumps(latency, indent=2), encoding="utf-8")
             mlflow.log_artifacts(tmp)
 
     der, cder = metrics["defect_escape_rate"], metrics["critical_defect_escape_rate"]
@@ -160,6 +183,9 @@ def main() -> None:
     print(f"DER    : {der['k']} / {der['n']} escaped = {der['value']:.2%}  95% CI {der['ci95']}")
     print(f"CDER   : {'N/A (Recipe severity 없음)' if cder['value'] is None else cder}")
     print(f"Review : {metrics['review_rate']['value']:.2%}   AUROC {metrics['auroc']:.3f}")
+    print(
+        f"Latency: P50 {latency['latency_p50']:.3f} / P95 {latency['latency_p95']:.3f} ms  {latency['latency_bands']}"
+    )
     print("※ dummy random score — 숫자는 의미 없음")
 
 
