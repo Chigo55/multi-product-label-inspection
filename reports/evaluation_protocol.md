@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.7
+# Evaluation Protocol v0.8
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -225,6 +225,16 @@ Camera acquisition
 - **Target: 제품당 P95 < 1000 ms** (1차 목표).
 - warm-up 제외, 최소 100회 반복 측정.
 
+코드: `src/evaluation/latency.py` — `measure()` → `summarize()`, 환경은 `environment()`.
+
+- pipeline 함수는 제품 1개를 끝까지 처리하고 구간마다 `with stage("detection"):`으로 감싼다. 구간 이름은 위 목록의
+  `acquisition` / `transfer` / `registration` / `detection` / `roi` / `identity` / `anomaly` / `ocr` / `barcode` /
+  `rule` / `aggregation`만 허용한다(오타는 오류).
+- **P50/P95/P99는 구간 합이 아니라 처음부터 끝까지 잰 벽시계 시간**이다. 구간으로 감싸지 않은 처리도 빠지지 않는다.
+- GPU는 비동기라 시계를 읽기 전에 동기화해야 한다 (`sync=torch.cuda.synchronize`). 안 하면 GPU 시간이 빠진다.
+- 시간대 구간은 `≤100` / `100 < t ≤ 500` / `500 < t ≤ 1000` / `>1000` ms이고, 각 구간에 든 제품 수를 센다.
+- **보고용 latency는 Jetson Nano에서만 잰다**(#5). 학습용 대여 GPU는 host가 매번 달라 비교가 성립하지 않는다.
+
 ---
 
 ## 8. 비용 지표 (RQ4/RQ5용)
@@ -244,16 +254,17 @@ Camera acquisition
 
 ```text
 [params]  git_commit, dataset_version, config_path, model_name,
-          threshold_ok, threshold_ng, n_shot, seed, device
+          threshold_ok, threshold_ng, n_shot, seed, device,
+          latency_batch_size, latency_resolution, latency_precision, host_platform, host_cpu, python (+ gpu, cuda)
 
 [metrics] defect_escape_rate, critical_defect_escape_rate,
           false_positive_rate, precision, recall, f1, auprc, auroc,
           false_positive_rate_2state,
           known_label_accuracy, unknown_label_detection_rate, unknown_forced_rate,
           review_rate_label, review_rate_product,
-          latency_p50, latency_p95, latency_p99
+          latency_n, latency_p50, latency_p95, latency_p99
 
-[artifacts] config 사본, FP/FN gallery, latency breakdown, evidence 예시
+[artifacts] config 사본, FP/FN gallery, latency breakdown(`latency.json`: 구간별 평균 + 시간대별 제품 수), evidence 예시
 ```
 
 비율 지표는 `{name}`(값) 외에 `{name}_k`, `{name}_n`, `{name}_ci95_low`, `{name}_ci95_high`를 함께
@@ -307,3 +318,4 @@ Camera acquisition
 | v0.5 | 2026-09-21 | §2 DER 분해(defect_category별 / defect_type별) 추가 (#32) |
 | v0.6 | 2026-09-25 | §3 Similar-label Confusion Rate 정의: E5 구간별 바꿔치기 불량의 DER (#35). 코드 `similar_label_confusion_rate` |
 | v0.7 | 2026-10-06 | §4 Label/Product-level 집계 구현(정답·score 묶는 규칙 명시), §0 FPR 2-state, §3 Unknown Forced Rate와 identity 지표 분모 규칙, §9 level 접미사, §9.1 `UNKNOWN` (#37) |
+| v0.8 | 2026-10-06 | §7 latency 측정 규칙 구현(벽시계 total, 구간 이름 고정, GPU sync, 시간대 경계, 보고용은 Jetson만 #5), §9 측정 환경 params (#38) |

@@ -25,7 +25,12 @@ decision:
   normal_review_rate: 0.10
 
 latency:
+  warmup_iters: 10
+  measure_iters: 100
   device: cpu
+  batch_size: 1
+  resolution: original     # dummy는 이미지를 읽지 않는다
+  precision: fp32
 
 tracking:
   experiment_name: week02_pipeline_check
