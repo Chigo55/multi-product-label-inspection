@@ -1,0 +1,35 @@
+# ============================================================
+# Week 4 — Month 1 Gate 점검 (#39). base.yaml에서 파생.
+# 모델 없음(seed 고정 random score + random identity). 숫자는 의미가 없으므로 인용하지 않는다.
+# ============================================================
+
+experiment:
+  name: week04_gate_check
+  research_question: null        # 인프라 점검 — 답하는 RQ 없음
+  scenario: null
+  seed: 42
+  notes: "Pilot에서 3-level·identity·E3·E5 지표 계산, 재현성, protocol §9 보고 세트 확인"
+
+dataset:
+  name: pilot                    # datasets/registry.yaml 키 (root/version/metadata/recipe는 거기서)
+  split: test
+
+model:
+  name: dummy
+
+# 제품마다 val 정상 score 분위수로 threshold를 정한다 (evaluation_protocol §6).
+# f는 Recipe의 제품 단위 목표 F에서 제품별 L로 역산한다: f = 1 - (1 - F)^(1/L)
+decision:
+  calibration_split: val
+  normal_review_rate: 0.10       # r
+
+latency:
+  warmup_iters: 10
+  measure_iters: 100
+  device: cpu
+  batch_size: 1
+  resolution: 256x256
+  precision: fp32
+
+tracking:
+  experiment_name: week04_gate_check

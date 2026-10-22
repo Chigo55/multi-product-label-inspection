@@ -42,14 +42,25 @@ def decide(score: float, t_ok: float, t_ng: float) -> str:
 
 
 def calibrate(
-    normal_scores: Sequence[float], normal_ng_rate: float, normal_review_rate: float
+    rows: Sequence[dict[str, Any]],
+    scores: Sequence[float],
+    normal_ng_rate: float,
+    normal_review_rate: float,
 ) -> tuple[float, float]:
     """val 정상 score만으로 (t_ok, t_ng)를 정한다 (evaluation_protocol §6, schema §4.3 안 A).
+
+    rows와 scores는 같은 순서다. val이 아닌 row가 하나라도 있으면 멈춘다 — test로 threshold를
+    정하는 경로를 코드에서 막는다. 불량 row는 받아도 쓰지 않는다.
 
     t_ng = Q(1-f): val 정상 중 NG(score > t_ng)는 f 이하다 — f가 목표 과검률.
     t_ok = Q(1-r): val 정상 중 약 r이 REVIEW 이상으로 간다.
     Q는 관측값 중에서 고르는 경험 분위수(method="higher")라 val이 작으면 해상도가 거칠다.
     """
+    if bad := sorted({str(r.get("split")) for r in rows} - {"val"}):
+        raise ValueError(f"threshold는 val로만 정한다 (받은 split: {bad})")
+    normal_scores = [
+        s for r, s in zip(rows, scores, strict=True) if r["normal_or_defect"] == "normal"
+    ]
     if len(normal_scores) == 0:
         raise ValueError("calibration용 정상 score가 없다")
     if not 0 <= normal_ng_rate <= normal_review_rate <= 1:
@@ -82,6 +93,11 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
     if bad := sorted(set(decision) - set(DECISIONS)):
         raise ValueError(f"알 수 없는 decision: {bad}")
 
+    # E3 주 기준: 미등록 라벨이 붙은 정상 row가 OK로 나간 비율. decision만 쓴다 (AD 모델에도 적용)
+    unknown_dec = [
+        d for r, d in zip(rows, decision, strict=True) if r.get("is_known_label") is False
+    ]
+
     return {
         "review_policy": REVIEW_POLICY,
         **_decision_metrics(rows, decision, score),
@@ -89,6 +105,7 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
         "similar_label_confusion_rate": _der_by(*_e5_subset(rows, decision), "e5_tier"),
         **_identity(rows, [by_id[r["sample_id"]].get("predicted_label_id") for r in rows]),
+        "unknown_label_ok_rate": rate(unknown_dec.count(OK), len(unknown_dec)),
         "label_level": _decision_metrics(*_group(rows, decision, score, ("unit_id", "label_slot"))),
         "product_level": _decision_metrics(*_group(rows, decision, score, ("unit_id",))),
     }
@@ -161,17 +178,36 @@ def _identity(rows: list[dict[str, Any]], predicted: list[str | None]) -> dict[s
 
     라벨이 없는 row(missing_label, actual_label_id=None)는 맞힐 라벨이 없으므로 뺀다.
     Unknown을 등록 라벨로 억지 분류한 것은 오답과 따로 `unknown_forced_rate`로 센다.
+    `open_set_accuracy`는 KNOWN_EXPECTED / KNOWN_WRONG / UNKNOWN 3-class 정확도다.
     """
     pairs = [] if all(p is None for p in predicted) else list(zip(rows, predicted, strict=True))
     known = [
         (r, p) for r, p in pairs if r.get("is_known_label") is True and r.get("actual_label_id")
     ]
     unknown = [p for r, p in pairs if r.get("is_known_label") is False]
+    labeled = [
+        (r, p) for r, p in pairs if r.get("actual_label_id") and r.get("is_known_label") is not None
+    ]
     return {
         "known_label_accuracy": rate(sum(p == r["actual_label_id"] for r, p in known), len(known)),
         "unknown_label_detection_rate": rate(unknown.count(UNKNOWN), len(unknown)),
         "unknown_forced_rate": rate(sum(p not in (None, UNKNOWN) for p in unknown), len(unknown)),
+        "open_set_accuracy": rate(
+            sum(
+                _open_set(r, r["actual_label_id"] if r["is_known_label"] else UNKNOWN)
+                == _open_set(r, p)
+                for r, p in labeled
+            ),
+            len(labeled),
+        ),
     }
+
+
+def _open_set(row: dict[str, Any], label: str | None) -> str | None:
+    """라벨 하나를 open-set 상태로. 답이 없으면(None) 어느 상태와도 맞지 않는다."""
+    if label is None or label == UNKNOWN:
+        return label
+    return "KNOWN_EXPECTED" if label == row.get("expected_label_id") else "KNOWN_WRONG"
 
 
 def _e5_subset(
