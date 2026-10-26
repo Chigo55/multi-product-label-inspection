@@ -106,7 +106,7 @@ def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     reg = load_yaml(REGISTRY_PATH)[cfg["dataset"]["name"]]
     recipe_path = REPO_ROOT / reg["recipe"]
-    recipe_sha = text_sha256(recipe_path)
+    recipe_sha = text_sha256(recipe_path.read_bytes())
     if recipe_sha != reg["sha256"]:
         raise ValueError(f"Recipe가 registry와 다르다 — build_pilot.py로 재생성: {recipe_sha}")
     recipe = load_yaml(recipe_path)

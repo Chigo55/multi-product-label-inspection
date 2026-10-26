@@ -48,7 +48,7 @@ pilot:
   metadata: datasets/custom/pilot/metadata.jsonl
   recipe: configs/recipes/pilot.yaml
   source: 생성물 — 원본 아카이브가 없다. Recipe + 변환기 + sample_id seed만으로 결정된다
-  sha256: 76bd52763940a5123bd4f468184df35f222a88c065f1cbbae8564b71eab1231d   # 원본 아카이브 대신 **Recipe 파일**의 해시다. 바뀌면 version을 올린다
+  sha256: 76bd52763940a5123bd4f468184df35f222a88c065f1cbbae8564b71eab1231d   # 원본 아카이브 대신 **Recipe 파일**의 해시다. Recipe 내용이 바뀌면 version을 올린다
                                     # 줄바꿈을 LF로 맞춘 해시다 (#69 T1). 이전 값 ab7526eb…는 Windows CRLF 체크아웃의 해시였다 — Recipe 내용은 같아서 version은 그대로 둔다
   license: 이 저장소와 동일. 라벨은 전부 합성이고 외부 이미지를 쓰지 않는다 (#6와 무관)
   downloaded: null                  # 받은 데이터가 아니다

@@ -170,17 +170,15 @@ def test_render_is_deterministic_per_sample_id(recipe: dict[str, Any]) -> None:
 
 
 def test_registry_hash_matches_recipe() -> None:
-    """registry의 sha256은 Recipe 파일 해시다 (원본 아카이브가 없으므로). 어긋나면 build가 막는다."""
+    """registry의 sha256은 Recipe 파일 해시다 (원본 아카이브가 없으므로, 줄바꿈 LF 기준). 어긋나면 build가 막는다."""
     entry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))["pilot"]
-    assert entry["sha256"] == text_sha256(RECIPE_PATH)
+    assert entry["sha256"] == text_sha256(RECIPE_PATH.read_bytes())
 
 
-def test_text_sha256_ignores_line_endings(tmp_path: Path) -> None:
+def test_text_sha256_ignores_line_endings() -> None:
     """Windows 체크아웃(CRLF)과 Linux(LF)가 같은 Recipe에 같은 해시를 내야 한다 (#69 T1)."""
-    (tmp_path / "lf").write_bytes(b"a: 1\nb: 2\n")
-    (tmp_path / "crlf").write_bytes(b"a: 1\r\nb: 2\r\n")
-    assert text_sha256(tmp_path / "lf") == text_sha256(tmp_path / "crlf")
-    assert text_sha256(tmp_path / "lf") == hashlib.sha256(b"a: 1\nb: 2\n").hexdigest()
+    lf = hashlib.sha256(b"a: 1\nb: 2\n").hexdigest()
+    assert text_sha256(b"a: 1\r\nb: 2\r\n") == text_sha256(b"a: 1\nb: 2\n") == lf
 
 
 # ------------------------------------------------------------

@@ -6,7 +6,7 @@
 때만** metadata를 쓴다. 이미지도 metadata도 커밋되지 않는다 — 이 스크립트로 재생성한다.
 
 생성 결과는 Recipe와 `src/utils/pilot.py`만으로 결정된다(샘플별 seed = sha256(sample_id)).
-그래서 registry의 `sha256`은 원본 아카이브 대신 **Recipe 파일 해시**다. 해시가 달라지면
+그래서 registry의 `sha256`은 원본 아카이브 대신 **Recipe 파일 해시**(줄바꿈 LF 기준)다. 해시가 달라지면
 데이터가 달라진 것이므로 `version`을 올리라고 여기서 막는다.
 
 불량 unit은 정상 unit 뒤에 따로 붙고, unit마다 Label Slot 한 곳만 불량이다 (#34).
@@ -33,7 +33,7 @@ def main() -> None:
     recipe_path = REPO_ROOT / entry["recipe"]
     recipe_bytes = recipe_path.read_bytes()
 
-    digest = text_sha256(recipe_path)
+    digest = text_sha256(recipe_bytes)
     if digest != entry["sha256"]:
         raise ValueError(
             f"Recipe가 registry에 등록된 내용과 다르다 — 데이터가 달라진다.\n"
