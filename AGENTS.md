@@ -38,6 +38,9 @@ uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root
 PyTorch는 하드웨어 종속이라 `pyproject.toml`에 고정하지 않는다:
 `uv add torch torchvision --index https://download.pytorch.org/whl/cu124` (CPU는 `/cpu`).
 
+바코드 디코더 중 pyzbar는 Linux에서 시스템 라이브러리가 필요하다: `sudo apt install libzbar0`
+(없으면 import에서 실패한다). Windows wheel은 DLL을 동봉하고, zxing-cpp는 양쪽 모두 wheel로 끝난다.
+
 
 ## Agent skills
 

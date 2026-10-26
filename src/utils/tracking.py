@@ -15,7 +15,7 @@ TRACKING_URI = f"sqlite:///{SHARED_ROOT / 'mlflow.db'}"
 ARTIFACT_ROOT = SHARED_ROOT / "mlartifacts"
 # 예측 레코드(sample_id ~ latency_ms) + 실패 분석용 ground truth 열
 PRED_COLUMNS = (
-    "sample_id", "decision", "anomaly_score", "predicted_label_id", "latency_ms",
+    "sample_id", "decision", "anomaly_score", "predicted_label_id", "barcode_result", "latency_ms",
     "image_path", "normal_or_defect", "defect_type",
 )  # fmt: skip
 
