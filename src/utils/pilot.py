@@ -501,13 +501,14 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                         "theta": round(nominal["theta"] + dtheta, 3),
                         "unit": "mm",
                     }
-                defects, tags = [], []
+                # E5 전용 unit은 모든 row에 `E5` — E1 평가 범위에서 뺀다 (ADR 0008)
+                defects, tags = [], ["E5"] if forced is not None else []
                 if m:
                     sev = synthetic.severity(overrides, product_id, label_slot, m)
                     defects = [{"type": m.defect_type, "severity": sev}]
                 if m and m.defect_type in SWAP_TYPES and actual_id is not None:
                     # 라벨 바꿔치기는 무작위로 생긴 것이든 E5 전용이든 전부 구간 태그를 단다
-                    tags = [f"E5-{similarity_tier(labels[identity], labels[actual_id])}"]
+                    tags = [*tags, f"E5-{similarity_tier(labels[identity], labels[actual_id])}"]
                 rows.append(
                     _row(
                         sample_id=f"{unit_id}/{label_slot}",

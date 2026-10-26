@@ -66,6 +66,13 @@ def flat_metrics(metrics: dict[str, Any]) -> dict[str, float]:
     return out
 
 
+def flat_scenario_metrics(by_scenario: dict[str, dict[str, Any]]) -> dict[str, float]:
+    """`evaluate_scenarios()` 결과 → 시나리오 접두사를 붙인 이름 (`e1_defect_escape_rate` …, §9)."""
+    return {
+        f"{s.lower()}_{k}": v for s, m in by_scenario.items() for k, v in flat_metrics(m).items()
+    }
+
+
 def write_predictions(path: Path, rows: list[dict], preds: list[dict]) -> None:
     by_id = {r["sample_id"]: r for r in rows}
     with path.open("w", encoding="utf-8", newline="") as f:

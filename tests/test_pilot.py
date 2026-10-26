@@ -231,6 +231,26 @@ def test_each_tier_gets_its_dedicated_units(pilot_small: Small) -> None:
         assert sum(f"E5-{tier}" in r["experiment_tags"] and r["split"] == "test" for r in rows) >= n
 
 
+def test_dedicated_units_are_tagged_e5(pilot_small: Small) -> None:
+    """E5 전용 unit은 모든 row에 `E5` 태그가 있다 — E1에서 뺄 수 있어야 한다 (#69 T2, 결정 2).
+
+    무작위로 생긴 바꿔치기 unit은 `E5-<구간>`만 있고 `E5`는 없다.
+    """
+    recipe, rows, _ = pilot_small
+    units: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        units.setdefault(r["unit_id"], []).append(r)
+    tagged = [rs for rs in units.values() if any("E5" in r["experiment_tags"] for r in rs)]
+    assert len(tagged) == recipe["build"]["e5_units_per_tier"] * len(E5_TIERS)
+    assert all("E5" in r["experiment_tags"] for rs in tagged for r in rs)
+    random_swaps = [
+        rs
+        for rs in units.values()
+        if any(t.startswith("E5-") for r in rs for t in r["experiment_tags"]) and rs not in tagged
+    ]
+    assert random_swaps, "일반 불량 unit의 무작위 바꿔치기는 E1에 남는다"
+
+
 def test_extreme_rows_differ_only_in_barcode(pilot_small: Small) -> None:
     _, rows, _ = pilot_small
     extreme = [r for r in rows if "E5-extreme" in r["experiment_tags"]]

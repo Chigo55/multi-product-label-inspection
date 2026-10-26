@@ -40,7 +40,8 @@ visa:
   downloaded: 2026-09-21
 
 pilot:
-  version: "0.3"                    # 0.2 → 0.3: E5 전용 unit + E5 태그 (#35). 0.2의 unit·그림은 그대로다
+  version: "0.4"                    # 0.3 → 0.4 (#69, 구성 중): E5 전용 unit에 `E5` 태그(T2). 0.3의 unit·그림은 그대로다
+                                    # 0.2 → 0.3: E5 전용 unit + E5 태그 (#35). 0.2의 unit·그림은 그대로다
                                     # 0.1 → 0.2: synthetic defect 10종 추가 (#34). 정상 unit·그림은 0.1과 같다
   schema: v1.1
   converter: src/utils/pilot.py     # 생성: uv run experiments/build_pilot.py

@@ -9,7 +9,7 @@
 Inspection System이고, 시스템 출력은 `OK`/`NG`가 아니라 **판정 + 원인 + 근거**다.
 
 구현된 것은 평가 레일뿐이다: `src/utils/mvtec.py`·`visa.py`(MVTec AD / LOCO / VisA → JSONL), `src/utils/metadata.py`(JSONL 입출력·검증·public 공통 row),
-`src/evaluation/metrics.py`(지표 정본), `src/utils/tracking.py`(MLflow). 모델은 아직 없다(Week 4 Gate).
+`src/evaluation/metrics.py`(지표 정본), `src/evaluation/scenarios.py`(시나리오별 평가 범위), `src/utils/tracking.py`(MLflow). 모델은 아직 없다(Week 4 Gate).
 
 ## Commands
 
@@ -66,7 +66,7 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 |---|---|
 | `docs/multi_product_..._research_summary.md` | 24주 기준 문서. **Week 1 스냅샷이므로 소급 수정하지 않는다** |
 | `CONTEXT.md` | 용어의 정본. 도메인 개념을 부를 때 여기 정의된 단어를 쓴다 |
-| `docs/adr/` | 되돌리기 어려운 결정 7건. 결정을 뒤집기 전에 읽는다 |
+| `docs/adr/` | 되돌리기 어려운 결정 8건. 결정을 뒤집기 전에 읽는다 |
 | `reports/research_questions.md` | RQ1~RQ6과 실험 시나리오(E1~E6) 매핑 |
 | `reports/evaluation_protocol.md` | **무엇을 측정하는가.** 여기 없는 지표는 주장 근거로 쓰지 않는다. 코드 정본은 `src/evaluation/metrics.py` — 둘은 항상 같아야 한다 |
 | `reports/experiment_scenarios.md` | E1~E6 시나리오별 입력·분할·지표·성공 기준 |
@@ -89,6 +89,8 @@ MVTec AD/LOCO, VisA 같은 public benchmark와 자체 benchmark는 원본 구조
 
 evaluation 코드를 쓸 때 반드시 지켜야 하는 구조다.
 
+- **시나리오 범위**: test 전체를 한 번에 평가하지 않는다. E1~E5마다 unit 단위로 잘라 `evaluate_scenarios()`로
+  따로 평가하고, F 판단과 헤드라인 FPR·DER은 E1 결과만 쓴다(`docs/adr/0008`).
 - **3-state**: `OK` / `NG` / `REVIEW`. `REVIEW`는 Escape도 False Reject도 아니고 Review Rate로
   따로 보고한다(`docs/adr/0002`).
 - **Primary metric**은 Defect Escape Rate이고 Critical Escape가 실질 최우선이다.

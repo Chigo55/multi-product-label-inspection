@@ -27,12 +27,14 @@ import yaml
 from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
 from src.evaluation.latency import Stage, environment, measure, summarize
-from src.evaluation.metrics import NG, OK, UNKNOWN, calibrate, decide, evaluate
+from src.evaluation.metrics import NG, OK, REVIEW_POLICY, UNKNOWN, calibrate, decide
+from src.evaluation.scenarios import evaluate_scenarios
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
 from src.utils.pilot import text_sha256
 from src.utils.tracking import (
     flat_metrics,
+    flat_scenario_metrics,
     git_commit,
     git_is_dirty,
     start_experiment,
@@ -79,7 +81,7 @@ def run(rows: list[dict], recipe: dict, cfg: dict) -> tuple[list[dict], dict, di
             p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)}
             for p in score_all(test, labels, rng)
         ]
-    return preds, evaluate([r for r in rows if r["split"] == split], preds), thresholds
+    return preds, evaluate_scenarios([r for r in rows if r["split"] == split], preds), thresholds
 
 
 def dummy_pipeline(unit_rows: list[dict], stage: Stage) -> None:
@@ -170,7 +172,7 @@ def main() -> None:
                 "num_test": len(test),
                 "num_test_units": len(units),
                 "reproducible": reproducible,
-                "review_policy": metrics["review_policy"],
+                "review_policy": REVIEW_POLICY,
             }
             | per_product
             | environment(
@@ -180,7 +182,7 @@ def main() -> None:
                 lat_cfg["precision"],
             )
         )
-        mlflow.log_metrics(flat_metrics(metrics | latency))
+        mlflow.log_metrics(flat_scenario_metrics(metrics) | flat_metrics(latency))
         for path in (CONFIG_PATH, REGISTRY_PATH, recipe_path):
             mlflow.log_artifact(str(path), artifact_path="config")
         with tempfile.TemporaryDirectory() as tmp:
@@ -202,22 +204,30 @@ def main() -> None:
             f"thresh {pid}: f={t['f']:.3%} ok={t['ok']:.4f} ng={t['ng']:.4f}"
             f"  (val 정상 {t['n_val_normal']})"
         )
-    levels = (("Defect", metrics), ("Label", metrics["label_level"]))
-    for level, m in (*levels, ("Product", metrics["product_level"])):
+    e1 = metrics["E1"]
+    for level, m in (
+        ("Defect", e1),
+        ("Label", e1["label_level"]),
+        ("Product", e1["product_level"]),
+    ):
         print(
-            f"{level:7s}: n={m['n']}  DER {pct(m['defect_escape_rate'])}"
+            f"E1 {level:7s}: n={m['n']}  DER {pct(m['defect_escape_rate'])}"
             f"  CDER {pct(m['critical_defect_escape_rate'])}"
             f"  FPR {pct(m['false_positive_rate'])}  Review {pct(m['review_rate'])}"
         )
+    print(f"E1 known_label_accuracy          : {pct(e1['known_label_accuracy'])}")
     for name in (
-        "known_label_accuracy",
+        "unknown_label_ok_rate",
         "unknown_label_detection_rate",
         "unknown_forced_rate",
         "open_set_accuracy",
-        "unknown_label_ok_rate",
     ):
-        print(f"{name:29s}: {pct(metrics[name])}")
-    e5 = metrics["similar_label_confusion_rate"]
+        print(f"E3 {name:29s}: {pct(metrics['E3'][name])}")
+    print(
+        "E4 DER : "
+        + "  ".join(f"{k} {pct(v)}" for k, v in metrics["E4"]["defect_escape_rate_by_type"].items())
+    )
+    e5 = metrics["E5"]["similar_label_confusion_rate"]
     print("E5     : " + "  ".join(f"{k} {pct(v)}" for k, v in e5.items()))
     print(
         f"Latency: P50 {latency['latency_p50']:.3f} / P95 {latency['latency_p95']:.3f} ms"

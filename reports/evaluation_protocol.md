@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.9
+# Evaluation Protocol v1.0
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -109,6 +109,9 @@ Identity 지표는 `predictions.csv`의 `predicted_label_id`만 쓴다 (§9.1). 
 `REVIEW`는 혼동이 아니다(사람에게 갔다). 구간은 `experiment_scenarios.md` E5, 코드는 `src/utils/pilot.py`
 `similarity_tier`. 태그가 없는 데이터(public track)는 빈 결과이며 0%로 보고하지 않는다.
 
+이 절의 지표도 **시나리오 범위 안에서** 읽는다(§4 시나리오 범위): Known Label Accuracy는 E1, Unknown Label
+OK Rate·Detection Rate·Forced Rate·Open-set 정확도는 E3, Similar-label Confusion Rate는 E5 결과를 쓴다.
+
 ---
 
 ## 4. 평가 단위 (3-Level)
@@ -149,6 +152,14 @@ Product-level에서 정상으로 집계된다. `CRITICAL`은 Critical Defect Esc
 |---|---|
 | **Review Rate** | REVIEW 판정 비율 (label-level / product-level 각각) |
 | Localization | (annotation 있는 subset 한정) IoU 또는 sPRO |
+
+### 시나리오 범위 (ADR 0008)
+
+위 지표 묶음은 test 전체가 아니라 **시나리오마다 범위를 잘라 따로** 계산한다. 미등록 라벨을 NG로 거부한 row도
+`normal`이라, 전체를 한 번에 평가하면 E3의 정답이 E1의 과검으로 잡힌다. **F 판단과 헤드라인 FPR·DER은 E1
+결과만 쓴다.** 범위는 unit 단위로 고르고 한 unit의 row를 쪼개지 않는다 — 쪼개면 Product-level 판정이 달라진다.
+규칙의 정본은 `experiment_scenarios.md` "평가 범위", 코드는 `src/evaluation/scenarios.py`
+`evaluate_scenarios()`다. 범위가 빈 시나리오는 결과에 없다(0%로 보고하지 않는다).
 
 ---
 
@@ -270,6 +281,10 @@ Camera acquisition
 [artifacts] config 사본, FP/FN gallery, latency breakdown(`latency.json`: 구간별 평균 + 시간대별 제품 수), evidence 예시
 ```
 
+지표 이름 앞에는 **시나리오 접두사** `e1_` / `e3_` / `e4_` / `e5_`를 붙인다(§4 시나리오 범위, ADR 0008).
+예: `e1_defect_escape_rate`, `e1_false_positive_rate_product`, `e3_unknown_label_ok_rate`. latency 지표는
+제품 1개 처리 시간이라 시나리오와 무관하므로 접두사가 없다. 접두사 없는 전체 평가 지표는 기록하지 않는다.
+
 비율 지표는 `{name}`(값) 외에 `{name}_k`, `{name}_n`, `{name}_ci95_low`, `{name}_ci95_high`를 함께
 기록한다. Label/Product-level 지표는 이름 뒤에 `_label` / `_product`를 붙인다(예: `review_rate_product`,
 `defect_escape_rate_k_label`). 분모가 0인 지표(예: public track의 CDER)는 값을 기록하지 않고 `metrics.json`에 `null`로 남긴다.
@@ -291,7 +306,7 @@ Camera acquisition
 모델이 늘어나면 열을 **추가**한다(예: `prototype_score`, `open_set_score`, `ocr_result`,
 `barcode_result`, `rule_violations`). 기존 열의 의미는 바꾸지 않는다.
 
-함께 저장: `metrics.json`(지표 전체 + confusion matrix + REVIEW 처리 규칙), config 사본,
+함께 저장: `metrics.json`(시나리오별 지표 전체 + confusion matrix + REVIEW 처리 규칙), config 사본,
 `datasets/registry.yaml` 사본.
 
 ---
@@ -323,3 +338,4 @@ Camera acquisition
 | v0.7 | 2026-10-06 | §4 Label/Product-level 집계 구현(정답·score 묶는 규칙 명시), §0 FPR 2-state, §3 Unknown Forced Rate와 identity 지표 분모 규칙, §9 level 접미사, §9.1 `UNKNOWN` (#37) |
 | v0.8 | 2026-10-06 | §7 latency 측정 규칙 구현(벽시계 total, 구간 이름 고정, GPU sync, 시간대 경계, 보고용은 Jetson만 #5), §9 측정 환경 params (#38) |
 | v0.9 | 2026-10-06 | Month 1 Gate(#39): §3 Unknown Label OK Rate(E3 주 기준)·Open-set 정확도 코드화, §6 val 전용 calibration을 코드로 강제, §9 Pilot 제품별 threshold param과 신규 지표 |
+| v1.0 | 2026-10-27 | §4 시나리오 범위(ADR 0008): 시나리오마다 unit 단위로 잘라 평가, F·헤드라인 FPR/DER은 E1만. §3 지표별 해당 시나리오. §9 지표 이름에 시나리오 접두사(`e1_` …), `metrics.json`은 시나리오별 (#69 T2) |

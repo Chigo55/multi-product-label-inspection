@@ -1,6 +1,6 @@
-# Experiment Scenarios v1.3
+# Experiment Scenarios v1.4
 
-> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-25 (Week 3) / 이슈: #31, #33, #34, #35
+> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-10-27 / 이슈: #31, #33, #34, #35, #69
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
 > RQ 매핑: `reports/research_questions.md` / 지표 정의: `reports/evaluation_protocol.md` / 분할: `datasets/schema.md` §4
 >
@@ -28,6 +28,22 @@
 
 > 현재 받아 둔 데이터(MVTec AD)로 바로 할 수 있는 것은 **E1과 결함 유형별 DER**이다. E2는 public few-shot 설정으로 일부 가능하다.
 > E3는 Pilot benchmark(#33)의 미등록 라벨 row로, E4의 seen/unseen 비교는 synthetic defect(#34)로, E5는 난이도 구간(#35)으로 가능해졌다.
+
+## 평가 범위
+
+시나리오마다 test를 아래 범위로 잘라 따로 평가한다(ADR 0008, evaluation_protocol §4). **unit 단위로 고르고 한 unit의
+row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이고, MLflow 지표 이름에 `e1_` … 접두사가 붙는다.
+
+| ID | 범위에 드는 unit | 쓰는 결과 |
+|---|---|---|
+| E1 | 미등록 라벨이 없고 모든 row가 `is_known_defect=true`이며 E5 전용 unit(`E5` 태그)이 아닌 unit | F 판단, 헤드라인 DER·CDER·FPR·Review Rate |
+| E3 | 미등록 라벨(`is_known_label=false`)이 하나라도 있는 unit | Unknown Label OK Rate, Detection·Forced Rate |
+| E4 | 미등록 라벨이 없고 E5 전용이 아닌 unit — E1에 hold-out 유형 unit을 더한 것. hold-out 유형이 하나도 없으면(public) 비운다 | 유형별 DER로 seen vs unseen |
+| E5 | `E5-<구간>` 태그 row가 있는 unit (무작위 바꿔치기 + 전용 unit) | 구간별 Similar-label Confusion Rate |
+
+- E5 전용 unit은 E1에서 뺀다 — 넣으면 E1의 불량 구성이 바꿔치기 쪽으로 쏠린다. 무작위로 생긴 바꿔치기는 E1에 남는다.
+- public track은 `is_known_label`이 비어 있고 태그가 없으므로 전부 E1이다. 범위가 빈 시나리오는 결과에 없다.
+- E2·E6는 해당 데이터(reference k-shot, shift subset)가 생길 때 범위를 추가한다.
 
 ---
 
@@ -100,6 +116,7 @@
 - **분할**: 난이도별 test subset을 `experiment_tags`(`E5-easy` … `E5-extreme`)로 표시한다. 바꿔치기 불량
   (`wrong_label` / `wrong_product_label`)은 전부 (요구, 실제) 쌍의 구간 태그를 받는다. 무작위 바꿔치기로는
   Extreme(1쌍)이 거의 생기지 않으므로 **구간마다 전용 unit 72개를 test에 추가**한다 (escape 0건이면 95% 상한 ≤ 5%).
+  전용 unit은 모든 row에 `E5` 태그를 더 단다(Pilot v0.4~) — E1 범위에서 빼기 위해서다.
 - **지표**: 난이도별 Similar-label Confusion Rate(= 구간별 바꿔치기 불량의 DER, evaluation_protocol §3), modality ablation(visual only → +OCR → +Barcode → +Context).
 - **성공 기준**: Extreme 구간에서 visual only는 구별하지 못하고 OCR/Barcode를 더하면 구별한다 — 가설 검증형.
 
@@ -124,3 +141,4 @@
 | v1.1 | 2026-09-25 | E1의 Pilot 과검률 목표 **F = 1%** 확정(#33). 정본은 `configs/recipes/pilot.yaml`. E3·E5 입력이 되는 Pilot benchmark가 실제로 생성됨 |
 | v1.2 | 2026-09-25 | Pilot에 synthetic defect 10종 추가(#34). E4 Pilot의 hold-out 유형은 `unknown_visual`(val에 없음, `is_known_defect=false`), 본 유형은 나머지 9종 |
 | v1.3 | 2026-09-25 | E5 구간 규칙 확정, Pilot에 구간별 전용 unit 72개(#35). Confusion Rate = 구간별 바꿔치기 DER |
+| v1.4 | 2026-10-27 | **평가 범위** 절 추가(ADR 0008, #69 T2): 시나리오별 unit 범위, E1은 미등록 라벨·hold-out 유형·E5 전용 unit 제외(결정 2). E5 전용 unit에 `E5` 태그(Pilot v0.4) |
