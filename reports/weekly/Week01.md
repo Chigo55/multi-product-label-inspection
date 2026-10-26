@@ -101,7 +101,7 @@ UI         : http://127.0.0.1:5000 (HTTP 200, run 조회 확인)
 - [x] `base.yaml`
 - [x] MLflow 최소 동작
 - [x] Literature Matrix
-- [ ] MVTec LOCO AD 정리 ← 초안 있음, **원문 훑고 확정**
+- [x] MVTec LOCO AD 정리 ← 초안 있음, **원문 훑고 확정**
 - [ ] PatchCore 정리 ← 초안 있음, **원문 훑고 확정**
 - [x] Public dataset 하나 읽기 성공 — 2026-09-21, MVTec AD bottle 292 rows → schema v0.2.1 JSONL (#4)
 - [x] `Week01.md` 연구노트
