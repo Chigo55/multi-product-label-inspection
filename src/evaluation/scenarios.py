@@ -22,17 +22,17 @@ def _unknown_label(u: Unit) -> bool:
     return any(r.get("is_known_label") is False for r in u)
 
 
-def _e5_only(u: Unit) -> bool:
+def _e5_dedicated(u: Unit) -> bool:
     """E5 전용 unit (`E5` 태그). 무작위로 생긴 바꿔치기는 `E5-<구간>`만 있어 여기 들지 않는다."""
     return any("E5" in (r.get("experiment_tags") or []) for r in u)
 
 
 RULES: dict[str, Callable[[Unit], bool]] = {
     "E1": lambda u: (
-        not _unknown_label(u) and not _e5_only(u) and all(r.get("is_known_defect") for r in u)
+        not _unknown_label(u) and not _e5_dedicated(u) and all(r.get("is_known_defect") for r in u)
     ),
     "E3": _unknown_label,
-    "E4": lambda u: not _unknown_label(u) and not _e5_only(u),
+    "E4": lambda u: not _unknown_label(u) and not _e5_dedicated(u),
     "E5": lambda u: any(t.startswith("E5-") for r in u for t in r.get("experiment_tags") or []),
 }
 

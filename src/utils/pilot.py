@@ -477,6 +477,8 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                 if not broken:
                     raise ValueError(f"{unit_id}: {defect_type}를 넣을 수 있는 Label Slot이 없다")
 
+            # E5 전용 unit은 모든 row에 `E5` — E1 평가 범위에서 뺀다 (ADR 0008)
+            unit_tags = ["E5"] if forced is not None else []
             for label_slot, identity in slots.items():
                 rng, offset, dtheta = jitter[label_slot]
                 m = broken.get(label_slot)
@@ -501,8 +503,7 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                         "theta": round(nominal["theta"] + dtheta, 3),
                         "unit": "mm",
                     }
-                # E5 전용 unit은 모든 row에 `E5` — E1 평가 범위에서 뺀다 (ADR 0008)
-                defects, tags = [], ["E5"] if forced is not None else []
+                defects, tags = [], [*unit_tags]
                 if m:
                     sev = synthetic.severity(overrides, product_id, label_slot, m)
                     defects = [{"type": m.defect_type, "severity": sev}]

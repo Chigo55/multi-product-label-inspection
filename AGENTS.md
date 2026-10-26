@@ -89,7 +89,7 @@ MVTec AD/LOCO, VisA 같은 public benchmark와 자체 benchmark는 원본 구조
 
 evaluation 코드를 쓸 때 반드시 지켜야 하는 구조다.
 
-- **시나리오 범위**: test 전체를 한 번에 평가하지 않는다. E1~E5마다 unit 단위로 잘라 `evaluate_scenarios()`로
+- **시나리오 범위**: test 전체를 한 번에 평가하지 않는다. E1·E3·E4·E5마다 unit 단위로 잘라 `evaluate_scenarios()`로
   따로 평가하고, F 판단과 헤드라인 FPR·DER은 E1 결과만 쓴다(`docs/adr/0008`).
 - **3-state**: `OK` / `NG` / `REVIEW`. `REVIEW`는 Escape도 False Reject도 아니고 Review Rate로
   따로 보고한다(`docs/adr/0002`).

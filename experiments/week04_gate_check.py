@@ -117,6 +117,10 @@ def main() -> None:
     rows = read_jsonl(SHARED_ROOT / reg["metadata"])
     if errors := find_errors(rows, image_root=image_root):
         raise ValueError(f"metadata 검증 실패 {len(errors)}건: {errors[:5]}")
+    if not any("E5" in r["experiment_tags"] for r in rows):  # v0.4부터 E5 전용 unit 표시 (ADR 0008)
+        raise ValueError(
+            "Pilot metadata가 v0.4 이전이다 — E5 전용 unit이 E1에 섞인다. build_pilot.py로 재생성"
+        )
 
     preds, metrics, thresholds = run(rows, recipe, cfg)
     _, again, _ = run(rows, recipe, cfg)
