@@ -61,6 +61,23 @@ NUISANCE = {
 }
 
 
+BUILT_VERSION_FILE = "dataset_version.txt"  # build_pilot.py가 metadata 옆에 남긴다
+
+
+def check_built_version(root: Path, version: str) -> None:
+    """root의 metadata가 registry의 이 version으로 생성됐는지. 아니면 멈춘다.
+
+    Recipe 해시만 보면 변환기만 바뀐 version 차이(예: 0.3 → 0.4)를 못 잡아, 다른 데이터에
+    `dataset_version`이 잘못 기록된다.
+    """
+    f = root / BUILT_VERSION_FILE
+    built = f.read_text(encoding="utf-8").strip() if f.exists() else "(기록 없음)"
+    if built != version:
+        raise ValueError(
+            f"{root}: metadata는 v{built}로 생성됐는데 registry는 v{version}이다 — build_pilot.py로 재생성"
+        )
+
+
 def text_sha256(data: bytes) -> str:
     """줄바꿈을 LF로 맞춘 sha256 — Recipe 해시가 체크아웃 OS(CRLF/LF)에 따라 달라지지 않게."""
     return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()

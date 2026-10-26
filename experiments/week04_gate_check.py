@@ -31,7 +31,7 @@ from src.evaluation.metrics import NG, OK, REVIEW_POLICY, UNKNOWN, calibrate, de
 from src.evaluation.scenarios import evaluate_scenarios
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
-from src.utils.pilot import text_sha256
+from src.utils.pilot import check_built_version, text_sha256
 from src.utils.tracking import (
     flat_metrics,
     flat_scenario_metrics,
@@ -114,13 +114,10 @@ def main() -> None:
     recipe = load_yaml(recipe_path)
 
     image_root = SHARED_ROOT / reg["root"]
+    check_built_version(image_root, reg["version"])
     rows = read_jsonl(SHARED_ROOT / reg["metadata"])
     if errors := find_errors(rows, image_root=image_root):
         raise ValueError(f"metadata 검증 실패 {len(errors)}건: {errors[:5]}")
-    if not any("E5" in r["experiment_tags"] for r in rows):  # v0.4부터 E5 전용 unit 표시 (ADR 0008)
-        raise ValueError(
-            "Pilot metadata가 v0.4 이전이다 — E5 전용 unit이 E1에 섞인다. build_pilot.py로 재생성"
-        )
 
     preds, metrics, thresholds = run(rows, recipe, cfg)
     _, again, _ = run(rows, recipe, cfg)

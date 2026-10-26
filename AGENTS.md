@@ -9,7 +9,7 @@
 Inspection System이고, 시스템 출력은 `OK`/`NG`가 아니라 **판정 + 원인 + 근거**다.
 
 구현된 것은 평가 레일뿐이다: `src/utils/mvtec.py`·`visa.py`(MVTec AD / LOCO / VisA → JSONL), `src/utils/metadata.py`(JSONL 입출력·검증·public 공통 row),
-`src/evaluation/metrics.py`(지표 정본), `src/evaluation/scenarios.py`(시나리오별 평가 범위), `src/utils/tracking.py`(MLflow). 모델은 아직 없다(Week 4 Gate).
+`src/evaluation/metrics.py`(지표 정본), `src/evaluation/scenarios.py`(시나리오별 평가 범위), `src/utils/tracking.py`(MLflow). 학습 모델은 아직 없다 — 규칙 기반 구성요소가 `src/models/`에 붙기 시작했다(`barcode.py`).
 
 ## Commands
 
@@ -32,6 +32,7 @@ uv run experiments/build_metadata.py mvtec_ad  # 원본을 registry의 root에 �
 uv run experiments/build_pilot.py             # 자체 Pilot benchmark 생성 (Recipe → 정상·불량 이미지 + metadata, 약 5분)
 uv run experiments/week02_pipeline_check.py   # dummy 예측 → 평가 → MLflow (레일 점검)
 uv run experiments/week04_gate_check.py   # Pilot에서 3-level·identity 지표 + 재현성 + §9 보고 세트 (Month 1 Gate)
+uv run experiments/week05_barcode_check.py # val 바코드 판독률·오판독, 디코더 합의 규칙 점검
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts # 메인 체크아웃에서
 ```
 

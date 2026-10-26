@@ -21,7 +21,9 @@ import yaml
 
 from src.utils.metadata import find_errors
 from src.utils.pilot import (
+    BUILT_VERSION_FILE,
     E5_TIERS,
+    check_built_version,
     e5_pairs,
     render_label,
     render_roi,
@@ -173,6 +175,16 @@ def test_registry_hash_matches_recipe() -> None:
     """registry의 sha256은 Recipe 파일 해시다 (원본 아카이브가 없으므로, 줄바꿈 LF 기준). 어긋나면 build가 막는다."""
     entry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))["pilot"]
     assert entry["sha256"] == text_sha256(RECIPE_PATH.read_bytes())
+
+
+def test_check_built_version(tmp_path: Path) -> None:
+    """registry version과 생성된 metadata의 version이 다르면 멈춘다 — 기록이 없어도 (#69 T3 리뷰)."""
+    with pytest.raises(ValueError, match="기록 없음"):
+        check_built_version(tmp_path, "0.4")
+    (tmp_path / BUILT_VERSION_FILE).write_text("0.3", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"v0.3로 생성"):
+        check_built_version(tmp_path, "0.4")
+    check_built_version(tmp_path, "0.3")
 
 
 def test_text_sha256_ignores_line_endings() -> None:

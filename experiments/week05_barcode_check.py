@@ -23,9 +23,10 @@ from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 �
 from PIL import Image
 
 from src.evaluation.metrics import rate
-from src.models.barcode import DECODERS, MISMATCH, PAIR, barcode_result, decoder_params
+from src.models.barcode import DECODERS, MISMATCH, PAIR, RESULTS, barcode_result, decoder_params
 from src.utils.metadata import read_jsonl
 from src.utils.paths import SHARED_ROOT
+from src.utils.pilot import check_built_version
 from src.utils.tracking import flat_metrics, git_commit, git_is_dirty, start_experiment
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week05_barcode_check.yaml"
@@ -41,6 +42,7 @@ def main() -> None:
     reg = load_yaml(REGISTRY_PATH)[cfg["dataset"]["name"]]
     layout = {k: v["layout"] for k, v in load_yaml(REPO_ROOT / reg["recipe"])["labels"].items()}
     root = SHARED_ROOT / reg["root"]
+    check_built_version(root, reg["version"])
     rows = [
         r
         for r in read_jsonl(SHARED_ROOT / reg["metadata"])
@@ -146,17 +148,14 @@ def main() -> None:
     )
     for kind in ("normal", "defect"):
         for a, b in combinations(DECODERS, 2):
-            c = [
-                pairs[(kind, f"{a}+{b}", x)]
-                for x in ("MATCH", "MISMATCH", "CONFLICT", "UNREADABLE")
-            ]
+            c = [pairs[(kind, f"{a}+{b}", x)] for x in RESULTS]
             print(f"| {kind} | {a}+{b} | " + " | ".join(map(str, c)) + " |")
 
-    def pct(x: dict) -> str:
-        return f"{x['k']}/{x['n']} (95% 상한 {x['ci95'][1]:.2%})"
+    def ci(x: dict) -> str:
+        return f"{x['k']}/{x['n']} (95% CI {x['ci95'][0]:.2%}~{x['ci95'][1]:.2%})"
 
     print(
-        f"\n채택 {chosen}: 정상 오판독(MISMATCH) {pct(false_ng)}, barcode_mismatch 검출 {pct(caught)}"
+        f"\n채택 {chosen}: 정상 오판독(MISMATCH) {ci(false_ng)}, barcode_mismatch 검출 {ci(caught)}"
     )
 
 

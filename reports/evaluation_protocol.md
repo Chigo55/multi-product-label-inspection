@@ -269,7 +269,7 @@ Camera acquisition
 [params]  git_commit, dataset_version, config_path, model_name,
           threshold_ok, threshold_ng (Pilot은 제품별: threshold_ok_A …), n_shot, seed, device,
           latency_batch_size, latency_resolution, latency_precision, host_platform, host_cpu, python (+ gpu, cuda)
-          (+ 바코드를 읽는 모델: barcode_decoders, pyzbar_version, zxing_cpp_version)
+          (+ 바코드를 읽는 모델: barcode_decoders, pyzbar_version, zbar_version, zxing_cpp_version)
 
 [metrics] defect_escape_rate, critical_defect_escape_rate,
           false_positive_rate, precision, recall, f1, auprc, auroc,
@@ -301,12 +301,12 @@ Camera acquisition
 | `decision` | `OK` / `REVIEW` / `NG` |
 | `anomaly_score` | 판정 전 score (클수록 이상) |
 | `predicted_label_id` | Label Identity 예측. 등록되지 않은 라벨로 거부하면 `UNKNOWN`. identity를 내지 않는 모델은 빈 값 |
-| `barcode_result` | `MATCH` / `MISMATCH` / `CONFLICT` / `UNREADABLE` — 두 디코더 합의 규칙(`src/models/barcode.py`). `MISMATCH`만 NG, 나머지 둘은 REVIEW. 바코드 없는 라벨(`expected_barcode` null)이나 바코드를 읽지 않는 모델은 빈 값 |
+| `barcode_result` | `MATCH` / `MISMATCH` / `CONFLICT` / `UNREADABLE` — 두 디코더 합의 규칙(`src/models/barcode.py`). `MATCH`는 OK, `MISMATCH`는 NG, `CONFLICT`·`UNREADABLE`은 REVIEW. 바코드 없는 라벨(`expected_barcode` null)이나 바코드를 읽지 않는 모델은 빈 값 |
 | `latency_ms` | 샘플 1건 처리 시간 |
 | `image_path`, `normal_or_defect`, `defect_type` | 실패 분석용으로 metadata에서 복사한 ground truth |
 
 모델이 늘어나면 열을 **추가**한다(예: `prototype_score`, `open_set_score`, `ocr_result`,
-`barcode_result`, `rule_violations`). 기존 열의 의미는 바꾸지 않는다.
+`rule_violations`). 기존 열의 의미는 바꾸지 않는다.
 
 함께 저장: `metrics.json`(시나리오별 지표 전체 + confusion matrix + REVIEW 처리 규칙), config 사본,
 `datasets/registry.yaml` 사본.
@@ -341,4 +341,4 @@ Camera acquisition
 | v0.8 | 2026-10-06 | §7 latency 측정 규칙 구현(벽시계 total, 구간 이름 고정, GPU sync, 시간대 경계, 보고용은 Jetson만 #5), §9 측정 환경 params (#38) |
 | v0.9 | 2026-10-06 | Month 1 Gate(#39): §3 Unknown Label OK Rate(E3 주 기준)·Open-set 정확도 코드화, §6 val 전용 calibration을 코드로 강제, §9 Pilot 제품별 threshold param과 신규 지표 |
 | v1.0 | 2026-10-27 | §4 시나리오 범위(ADR 0008): 시나리오마다 unit 단위로 잘라 평가, F·헤드라인 FPR/DER은 E1만. §3 지표별 해당 시나리오. §9 지표 이름에 시나리오 접두사(`e1_` …), `metrics.json`은 시나리오별 (#69 T2) |
-| v1.1 | 2026-10-27 | §9.1 `barcode_result` 열 정의(두 디코더 합의, #69 T3·#66). 디코더 이름·버전은 param(`barcode_decoders`, `pyzbar_version`, `zxing_cpp_version`) |
+| v1.1 | 2026-10-27 | §9.1 `barcode_result` 열 정의(두 디코더 합의, #69 T3·#66). 디코더 이름·버전은 param(`barcode_decoders`, `pyzbar_version`, `zbar_version`, `zxing_cpp_version`) — pyzbar는 래퍼라 실제 디코더 libzbar 버전을 따로 남긴다 |

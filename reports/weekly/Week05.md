@@ -13,12 +13,15 @@
 - 실행: `uv run experiments/week05_barcode_check.py` (config `configs/week05_barcode_check.yaml`, RQ3 / E5)
 - run: `ea7e97f0053f4101abf6eab5f703d1cf` (`citable=false`, git `cf1dbc8`, `git_dirty=false`)
 - 데이터: Pilot val, 바코드가 있는 라벨만 — 정상 1007행 + `barcode_mismatch` 24행.
-  이미지는 v0.3 생성분이다. registry는 이미 v0.4(구성 중)지만 v0.4는 test에 태그·unit만 더하므로 val은 같다.
-- 디코더: pyzbar 0.1.9, zxing-cpp 3.1.1 (원본 / 2배 bicubic 업스케일)
+  **metadata는 v0.3 생성분인데 run param은 `dataset_version=0.4`로 남았다**(registry를 먼저 올린 탓). run에
+  `actual_metadata_version=0.3` 태그를 달았고, 이후 실험 스크립트는 생성 version을 registry와 대조해 멈춘다
+  (`check_built_version`). **v0.4 생성(T9 후) 뒤 다시 돌려 이 절을 갱신한다.**
+- 디코더: pyzbar 0.1.9 + **libzbar 0.10**(Windows wheel 동봉본), zxing-cpp 3.1.1 (원본 / 2배 bicubic 업스케일).
+  Linux `libzbar0`는 0.23이라 판독률이 다를 수 있다 — 이후 run은 `zbar_version` param을 남긴다.
 
 ### 디코더 단독
 
-판독 = 값을 정확히 하나 읽음. 오판독 = 실제 바코드와 다른 값을 읽음.
+판독 = 값을 정확히 하나 읽음. 오판독 = 실제 바코드와 다른 값을 (함께) 읽음.
 
 | 대상 | layout | 디코더 | n | 판독 | 오판독 |
 |---|---|---|---:|---:|---:|
@@ -35,8 +38,8 @@
 | barcode_mismatch | tag | zxing | 15 | 14 (93.3%) | 0 |
 | barcode_mismatch | tag | zxing_x2 | 15 | 15 (100.0%) | 0 |
 
-zxing-cpp 원본은 plate에서 73%만 읽는다. 업스케일하면 97%로 오르지만 오판독이 1건 생긴다 — 단일 디코더로 NG를
-내면 이 1건이 과검이 된다.
+zxing-cpp 원본은 plate에서 73%만 읽고, `XA1001`을 `XA1011`로 잘못 읽은 1건이 있다(`A/val/00324`). 업스케일하면
+97%로 오르지만 다른 1건에서 값을 둘(`XA0228|XA1001`) 읽는다. 단일 디코더로 NG를 내면 이런 건이 과검이 된다.
 
 ### 합의 규칙 (두 디코더가 같은 값 하나를 읽어야 판독 성공)
 
@@ -51,9 +54,9 @@ zxing-cpp 원본은 plate에서 73%만 읽는다. 업스케일하면 97%로 오�
 
 **채택: pyzbar + zxing-cpp 2배** (`src/models/barcode.py` `PAIR`).
 
-- val 정상 오판독(MISMATCH → 과검) **0 / 1007, 95% 상한 0.37%**.
-- val `barcode_mismatch` 검출 23 / 24. 놓친 1건은 UNREADABLE → REVIEW라 escape가 아니다.
-- 대가: 정상 바코드 row의 3.1%(UNREADABLE 30 + CONFLICT 1)가 REVIEW로 간다. 바코드 라벨이 있는 제품에서는
+- val 정상 오판독(MISMATCH → 과검) **0 / 1007 (95% CI 0.00%~0.37%)**.
+- val `barcode_mismatch` 검출 23 / 24 = 95.8% (95% CI 78.9%~99.9%). 놓친 1건은 UNREADABLE → REVIEW라 escape가 아니다.
+- 대가: 정상 바코드 row의 31 / 1007 = 3.1% (95% CI 2.1%~4.3%, UNREADABLE 30 + CONFLICT 1)가 REVIEW로 간다. 바코드 라벨이 있는 제품에서는
   Product-level Review Rate에 그대로 더해진다 — 제품 검토 예산 R(#69 T10)을 정할 때 이 몫을 뺀다.
 
 ### 남은 것

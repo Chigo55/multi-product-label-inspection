@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -13,11 +15,12 @@ from src.models.barcode import (
     MISMATCH,
     UNREADABLE,
     barcode_result,
+    decoder_params,
     read_barcode,
 )
 from src.utils.pilot import render_label
-from tests.conftest import RECIPE_PATH
 
+RECIPE_PATH = Path(__file__).resolve().parents[1] / "configs" / "recipes" / "pilot.yaml"
 A, B = frozenset({"XA1001"}), frozenset({"XA1011"})
 NONE: frozenset[str] = frozenset()
 
@@ -47,3 +50,9 @@ def test_reads_rendered_label() -> None:
     img = render_label(spec)
     assert read_barcode(img, spec["barcode"]) == MATCH
     assert read_barcode(img, "XA9999") == MISMATCH
+
+
+def test_decoder_params_name_the_real_zbar() -> None:
+    """pyzbar 버전만으로는 Windows(zbar 0.10)와 Linux(0.23)가 구별되지 않는다."""
+    major, minor, _ = decoder_params()["zbar_version"].split(".")
+    assert (major, int(minor) >= 10) == ("0", True)

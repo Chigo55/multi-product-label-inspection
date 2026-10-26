@@ -16,16 +16,18 @@
 
 from __future__ import annotations
 
+import ctypes
 from collections.abc import Callable, Sequence
 from importlib.metadata import version
 
 import zxingcpp
 from PIL import Image
-from pyzbar import pyzbar
+from pyzbar import pyzbar, zbar_library
 
 from src.evaluation.metrics import NG, OK, REVIEW
 
 MATCH, MISMATCH, UNREADABLE, CONFLICT = "MATCH", "MISMATCH", "UNREADABLE", "CONFLICT"
+RESULTS = (MATCH, MISMATCH, CONFLICT, UNREADABLE)
 DECISION = {MATCH: OK, MISMATCH: NG, UNREADABLE: REVIEW, CONFLICT: REVIEW}
 
 
@@ -69,10 +71,18 @@ def read_barcode(img: Image.Image, expected: str) -> str:
     return barcode_result([DECODERS[name](gray) for name in PAIR], expected)
 
 
+def _zbar_version() -> str:
+    """pyzbar는 ctypes 래퍼라 실제 디코더는 libzbar다 — Windows wheel 동봉본(0.10)과 Linux libzbar0(0.23)이 다르다."""
+    v = [ctypes.c_uint() for _ in range(3)]  # 0.10은 (major, minor), 0.23은 patch까지 쓴다
+    zbar_library.load()[0].zbar_version(*(ctypes.byref(x) for x in v))
+    return ".".join(str(x.value) for x in v)
+
+
 def decoder_params() -> dict[str, str]:
     """MLflow param — 판독률이 디코더와 버전에 좌우되므로 run마다 남긴다."""
     return {
         "barcode_decoders": "+".join(PAIR),
         "pyzbar_version": version("pyzbar"),
+        "zbar_version": _zbar_version(),
         "zxing_cpp_version": version("zxing-cpp"),
     }
