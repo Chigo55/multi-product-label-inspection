@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 import tempfile
@@ -31,6 +30,7 @@ from src.evaluation.latency import Stage, environment, measure, summarize
 from src.evaluation.metrics import NG, OK, UNKNOWN, calibrate, decide, evaluate
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
+from src.utils.pilot import text_sha256
 from src.utils.tracking import (
     flat_metrics,
     git_commit,
@@ -106,7 +106,7 @@ def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     reg = load_yaml(REGISTRY_PATH)[cfg["dataset"]["name"]]
     recipe_path = REPO_ROOT / reg["recipe"]
-    recipe_sha = hashlib.sha256(recipe_path.read_bytes()).hexdigest()
+    recipe_sha = text_sha256(recipe_path)
     if recipe_sha != reg["sha256"]:
         raise ValueError(f"Recipe가 registry와 다르다 — build_pilot.py로 재생성: {recipe_sha}")
     recipe = load_yaml(recipe_path)

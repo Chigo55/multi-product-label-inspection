@@ -61,6 +61,11 @@ NUISANCE = {
 }
 
 
+def text_sha256(path: Path) -> str:
+    """줄바꿈을 LF로 맞춘 sha256 — Recipe 해시가 체크아웃 OS(CRLF/LF)에 따라 달라지지 않게."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def rng_for(sample_id: str) -> np.random.Generator:
     """sample_id만으로 정해지는 난수원. 생성 순서·병렬화와 무관하게 재현된다."""
     digest = hashlib.sha256(sample_id.encode()).digest()[:8]

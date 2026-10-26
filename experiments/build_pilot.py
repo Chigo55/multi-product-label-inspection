@@ -15,7 +15,6 @@ E5 전용 unit은 그 뒤에 test로만 붙는다 (#35).
 
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
 
 import yaml
@@ -23,7 +22,7 @@ from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 �
 
 from src.utils.metadata import find_errors, write_jsonl
 from src.utils.paths import SHARED_ROOT
-from src.utils.pilot import E5_TIERS, build, e5_pairs
+from src.utils.pilot import E5_TIERS, build, e5_pairs, text_sha256
 
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
 NAME = "pilot"
@@ -34,7 +33,7 @@ def main() -> None:
     recipe_path = REPO_ROOT / entry["recipe"]
     recipe_bytes = recipe_path.read_bytes()
 
-    digest = hashlib.sha256(recipe_bytes).hexdigest()
+    digest = text_sha256(recipe_path)
     if digest != entry["sha256"]:
         raise ValueError(
             f"Recipe가 registry에 등록된 내용과 다르다 — 데이터가 달라진다.\n"
