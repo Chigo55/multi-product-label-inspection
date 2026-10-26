@@ -70,7 +70,7 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 |---|---|
 | `docs/multi_product_..._research_summary.md` | 24주 기준 문서. **Week 1 스냅샷이므로 소급 수정하지 않는다** |
 | `CONTEXT.md` | 용어의 정본. 도메인 개념을 부를 때 여기 정의된 단어를 쓴다 |
-| `docs/adr/` | 되돌리기 어려운 결정 8건. 결정을 뒤집기 전에 읽는다 |
+| `docs/adr/` | 되돌리기 어려운 결정 8건(+ 초안 0009). 결정을 뒤집기 전에 읽는다 |
 | `reports/research_questions.md` | RQ1~RQ6과 실험 시나리오(E1~E6) 매핑 |
 | `reports/evaluation_protocol.md` | **무엇을 측정하는가.** 여기 없는 지표는 주장 근거로 쓰지 않는다. 코드 정본은 `src/evaluation/metrics.py` — 둘은 항상 같아야 한다 |
 | `reports/experiment_scenarios.md` | E1~E6 시나리오별 입력·분할·지표·성공 기준 |
