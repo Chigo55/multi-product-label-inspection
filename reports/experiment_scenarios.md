@@ -1,4 +1,4 @@
-# Experiment Scenarios v1.8
+# Experiment Scenarios v1.9
 
 > 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-10-27 / 이슈: #31, #33, #34, #35, #69
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
@@ -134,7 +134,12 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
   구간마다 **쌍 수(`n_pairs`)와 쌍별 분해**를 함께 보고한다(§5). Pilot은 Hard 5쌍·Extreme 1쌍이라 Extreme 결과는
   "b-3/b-4에서는"이라고만 말할 수 있다.
 - **Main benchmark 쌍 수 목표** (Week 17): 구간마다 서로 다른 쌍 ≥ 5, E3 미등록 아이덴티티 ≥ 5 — 숫자는 `[시작 시 확정]`.
-- **성공 기준**: Extreme 구간에서 visual only는 구별하지 못하고 OCR/Barcode를 더하면 구별한다 — 가설 검증형.
+- **성공 기준** (v1.9, #69 T16): **"외관만으로 구별할 수 있는가"는 해상도와 blur의 함수다.** 고정 해상도 하나에서
+  "visual only는 Extreme에서 실패"를 검증하지 않는다 — b-3/b-4는 깨끗하게 렌더하면 라벨 픽셀의 5.0%가 다르고 차이가
+  바코드 영역(68×32 px)에 몰려 있어, 템플릿 차분이나 고해상도 patch AD가 256px에서 Extreme을 잡을 수 있다(2026-10-27 측정).
+  대신 ROI 128/256/512px × blur 3단계에서 visual 방법과 디코딩 방법(OCR, 바코드)의 구간별 Confusion Rate가
+  **갈라지는 지점**을 찾는다. 성공 = 그 경계가 CI와 함께 재현된다(seed ≥ 3). 설계: `configs/e5_resolution_sweep.yaml`.
+  기존 데이터도 `nuisance.jsonl`의 blur 반경 구간별로 나눠 같은 비교를 낸다.
   Hard 구간의 a-2 / a-5는 바코드가 같아 **OCR만** 가른다 — modality ablation에서 OCR의 기여를 바코드와 분리해 본다.
 
 ## E6 — Domain Shift
@@ -165,3 +170,4 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 | v1.6 | 2026-10-27 | E1에 제품 검토 예산 R=5%와 risk–coverage·AURC 비교 (#69 T10) |
 | v1.7 | 2026-10-27 | E5 쌍 수·쌍별 분해 보고, Main benchmark 구간별 쌍 수 목표(쌍 ≥ 5, E3 아이덴티티 ≥ 5, 시작 시 확정) (#69 T11) |
 | v1.8 | 2026-10-27 | E6에 Pilot-Real 보조 결과(`E6-real`, 프로토콜 `datasets/pilot_real.md`) (#69 T14, 결정 6) |
+| v1.9 | 2026-10-27 | E5 성공 기준을 "외관 구별 가능성은 해상도·blur의 함수"로 재정의, ROI 128/256/512 × blur 3단계 sweep 설계(`configs/e5_resolution_sweep.yaml`), sidecar blur 구간 분해 (#69 T16) |
