@@ -1,4 +1,4 @@
-# Experiment Scenarios v1.5
+# Experiment Scenarios v1.6
 
 > 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-10-27 / 이슈: #31, #33, #34, #35, #69
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
@@ -67,6 +67,8 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
   **Pilot의 F = 1%** (#33 확정). 정본은 Recipe `configs/recipes/pilot.yaml`의
   `product_false_reject_target`이고, 제품별 L에서 f를 역산한다 — A·B(L=3) f=0.334%, C(L=4) f=0.251%.
   분위수 해상도를 확보하려고 val 정상을 제품당 360~480 row로 잡았다.
+  **제품 단위 검토 예산 R = 5%**(#69 결정 3)도 Recipe `product_review_target`이고 같은 식으로 라벨 단위 r을 역산한다.
+  방법끼리는 R 하나가 아니라 risk–coverage 곡선과 AURC로도 비교한다 (evaluation_protocol §6).
 - **주의**: public track은 CDER이 N/A다 (schema §3.1).
 
 ## E2 — Few-shot New Label
@@ -155,3 +157,4 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 | v1.3 | 2026-09-25 | E5 구간 규칙 확정, Pilot에 구간별 전용 unit 72개(#35). Confusion Rate = 구간별 바꿔치기 DER |
 | v1.4 | 2026-10-27 | **평가 범위** 절 추가(ADR 0008, #69 T2): 시나리오별 unit 범위, E1은 미등록 라벨·hold-out 유형·E5 전용 unit 제외(결정 2). E5 전용 unit에 `E5` 태그(Pilot v0.4) |
 | v1.5 | 2026-10-27 | Pilot v0.4(#69 T5~T7·T9): 공통 규칙에 `pilot_dev`·test 봉인, 평가 범위에 `GEOM-boundary`·`OCR-confusable` 묶음과 E1·E4 제외, E5에 `revision_mismatch`와 OCR-only 쌍 a-2 / a-5, 구간별 쌍 수 갱신. 덧붙인 unit 묶음은 Scenario의 보조 범위(RQ 표시) |
+| v1.6 | 2026-10-27 | E1에 제품 검토 예산 R=5%와 risk–coverage·AURC 비교 (#69 T10) |

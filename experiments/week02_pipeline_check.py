@@ -24,7 +24,7 @@ import yaml
 from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
 from src.evaluation.latency import Stage, environment, measure, summarize
-from src.evaluation.metrics import REVIEW_POLICY, calibrate, decide
+from src.evaluation.metrics import RC_TARGETS, REVIEW_POLICY, calibrate, decide, risk_coverage
 from src.evaluation.scenarios import evaluate_scenarios
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
@@ -36,6 +36,7 @@ from src.utils.tracking import (
     open_test,
     start_experiment,
     write_predictions,
+    write_risk_coverage,
 )
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week02_pipeline_check.yaml"
@@ -95,8 +96,16 @@ def main() -> None:
     val_scores = [p["anomaly_score"] for p in score_all(val, rng)]
     t_ok, t_ng = calibrate(val, val_scores, dec["normal_ng_rate"], dec["normal_review_rate"])
     n_val_normal = sum(r["normal_or_defect"] == "normal" for r in val)
-    preds = [p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)} for p in score_all(test, rng)]
+    scored = score_all(test, rng)
+    preds = [p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)} for p in scored]
     metrics = evaluate_scenarios(test, preds)  # public track은 E1뿐이다
+
+    # risk-coverage (§6). public은 L=1이라 제품 예산 R = 라벨 r이다. 점마다 val에서 다시 calibration한다
+    def decide_at(target: float) -> list[str]:
+        ok, ng = calibrate(val, val_scores, dec["normal_ng_rate"], target)
+        return [decide(p["anomaly_score"], ok, ng) for p in scored]
+
+    rc = risk_coverage(test, decide_at, [t for t in RC_TARGETS if t >= dec["normal_ng_rate"]])
     lat_cfg = cfg["latency"]
     # 제품 1개 = test 샘플 1개 (public track은 L=1). dummy라 anomaly 구간만 있다
     latency = summarize(
@@ -141,7 +150,11 @@ def main() -> None:
                 lat_cfg["precision"],
             )
         )
-        mlflow.log_metrics(flat_scenario_metrics(metrics) | flat_metrics(latency))
+        mlflow.log_metrics(
+            flat_scenario_metrics(metrics)
+            | flat_metrics(latency)
+            | ({"e1_aurc": rc["aurc"]} if rc["aurc"] is not None else {})
+        )
         mlflow.log_artifact(str(CONFIG_PATH), artifact_path="config")
         mlflow.log_artifact(str(REGISTRY_PATH), artifact_path="config")
         with tempfile.TemporaryDirectory() as tmp:
@@ -150,6 +163,7 @@ def main() -> None:
                 json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             (Path(tmp) / "latency.json").write_text(json.dumps(latency, indent=2), encoding="utf-8")
+            write_risk_coverage(Path(tmp), rc, dec["normal_review_rate"])
             mlflow.log_artifacts(tmp)
 
     e1 = metrics["E1"]

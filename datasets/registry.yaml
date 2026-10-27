@@ -50,8 +50,9 @@ pilot:
   metadata: datasets/custom/pilot/metadata.jsonl
   recipe: configs/recipes/pilot.yaml
   source: 생성물 — 원본 아카이브가 없다. Recipe + 변환기 + sample_id seed만으로 결정된다
-  sha256: 8c795bf34bf0895f89dd75d2fdd6f42829d49fbff4fc8b46b72e75bcf5c1745d   # 원본 아카이브 대신 **Recipe 파일**의 해시다. Recipe 내용이 바뀌면 version을 올린다
+  sha256: d03d6d6cba42b0d1d15465fd60c196f00fa7f4cef233723f90f10689b6f4c067   # 원본 아카이브 대신 **Recipe 파일**의 해시다. Recipe 내용이 바뀌면 version을 올린다
                                     # 줄바꿈을 LF로 맞춘 해시다 (#69 T1). v0.3의 LF 해시는 76bd5276…(CRLF로는 ab7526eb…)
+                                    # Recipe에 product_review_target(T10)을 더했다 — 생성기가 읽지 않는 평가 목표라 v0.4 데이터는 그대로다
   test_sealed: true                 # test는 config `experiment.final_report: true`일 때만 연다 — 분석은 pilot_dev로 (#69 T9). 첫 개봉 Week 18
   license: 이 저장소와 동일. 라벨은 전부 합성이고 외부 이미지를 쓰지 않는다 (#6와 무관)
   downloaded: null                  # 받은 데이터가 아니다
@@ -66,6 +67,6 @@ pilot_dev:                          # 실패 분석·방향 결정용 (#69 T9). 
   namespace: custom_pilot_dev       # unit_id 접두사 = seed 네임스페이스. 구성은 pilot과 같고 그림만 다르다
   lots: {fit: [L2691, L2692], test: [L2693, L2694]}
   source: 생성물 — pilot과 같은 Recipe·변환기, 다른 seed 네임스페이스
-  sha256: 8c795bf34bf0895f89dd75d2fdd6f42829d49fbff4fc8b46b72e75bcf5c1745d   # pilot과 같은 Recipe 해시
+  sha256: d03d6d6cba42b0d1d15465fd60c196f00fa7f4cef233723f90f10689b6f4c067   # pilot과 같은 Recipe 해시
   license: 이 저장소와 동일
   downloaded: null

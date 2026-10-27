@@ -18,10 +18,9 @@ model:
   name: dummy
 
 # 제품마다 val 정상 score 분위수로 threshold를 정한다 (evaluation_protocol §6).
-# f는 Recipe의 제품 단위 목표 F에서 제품별 L로 역산한다: f = 1 - (1 - F)^(1/L)
+# f·r은 Recipe의 제품 단위 목표 F(과검)·R(검토 예산)에서 제품별 L로 역산한다: 1 - (1 - F)^(1/L)
 decision:
   calibration_split: val
-  normal_review_rate: 0.10       # r
 
 latency:
   warmup_iters: 10

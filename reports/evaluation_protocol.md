@@ -1,4 +1,4 @@
-# Evaluation Protocol v1.2
+# Evaluation Protocol v1.3
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -202,6 +202,14 @@ Observed CDER:
   불량 없이 정상만으로 기준을 잡는다 — 불량이 희소한 현장 조건과 같다. 불량은 test에서 처음 본다.
 - **f는 제품 단위 목표에서 역산한다.** 제품당 라벨이 L장이고 라벨 오류가 독립이면
   제품 과검률 ≈ 1 − (1 − f)^L 이다 (f=1%, L=5 → 약 4.9%). public track은 L=1이라 f가 곧 제품 과검률이다.
+- **r도 제품 단위 검토 예산 R에서 역산한다** (#69 T10): r = 1 − (1 − R)^(1/L). Pilot R = 5%(Recipe
+  `product_review_target`, #69 결정 3) → L=3 r≈1.70%, L=4 r≈1.27%. 라벨 단위 r=10%가 제품 단위에서는 정상 제품의
+  약 35%를 REVIEW로 보냈다(Week04). public은 L=1이라 r = R이다. 코드: `label_rate()`.
+- **risk–coverage**: r 하나로 방법을 비교하면 결과가 r 선택에 좌우된다. f는 고정하고 R을 격자
+  `RC_TARGETS`(1, 2, 3, 5, 7.5, 10, 15, 20, 30%, F 미만은 제외)로 바꿔 가며 점마다 val에서 다시 calibration하고,
+  E1 범위의 (제품 Review Rate, 제품 DER, 제품 CDER)를 낸다. **AURC = 제품 Review Rate에 대한 제품 DER의 사다리꼴
+  면적**(격자 구간)이다 — 작을수록 같은 검토량에서 덜 샌다. 같은 격자일 때만 방법끼리 비교한다.
+  코드: `risk_coverage()`, artifact `risk_coverage.csv` / `.png`, metric `e1_aurc`.
 - val이 작으면 분위수 해상도가 거칠다 (n=42 → 약 2.4% 단위). 보고할 때 val 정상 수를 함께 적는다.
 - `REVIEW` 구간은 두 threshold(`ok`, `ng`)로 정의한다: `score < ok → OK`, `score > ng → NG`, 사이는 `REVIEW`.
   **경계값(`score == ok` 또는 `== ng`)은 `REVIEW`** 다 — 애매하면 사람에게 보낸다.
@@ -277,10 +285,11 @@ Camera acquisition
           false_positive_rate_2state,
           known_label_accuracy, unknown_label_detection_rate, unknown_forced_rate,
           unknown_label_ok_rate, open_set_accuracy,
-          review_rate_label, review_rate_product,
+          review_rate_label, review_rate_product, aurc (§6, E1),
           latency_n, latency_p50, latency_p95, latency_p99
 
-[artifacts] config 사본, FP/FN gallery, latency breakdown(`latency.json`: 구간별 평균 + 시간대별 제품 수), evidence 예시
+[artifacts] config 사본, FP/FN gallery, latency breakdown(`latency.json`: 구간별 평균 + 시간대별 제품 수),
+          risk–coverage(`risk_coverage.csv`/`.png`, §6), evidence 예시
 ```
 
 지표 이름 앞에는 **범위 접두사** `e1_` / `e3_` / `e4_` / `e5_` / `geom_boundary_` / `ocr_confusable_`를 붙인다(§4 시나리오 범위, ADR 0008).
@@ -344,3 +353,4 @@ Camera acquisition
 | v1.0 | 2026-10-27 | §4 시나리오 범위(ADR 0008): 시나리오마다 unit 단위로 잘라 평가, F·헤드라인 FPR/DER은 E1만. §3 지표별 해당 시나리오. §9 지표 이름에 시나리오 접두사(`e1_` …), `metrics.json`은 시나리오별 (#69 T2) |
 | v1.1 | 2026-10-27 | §9.1 `barcode_result` 열 정의(두 디코더 합의, #69 T3·#66). 디코더 이름·버전은 param(`barcode_decoders`, `pyzbar_version`, `zbar_version`, `zxing_cpp_version`) — pyzbar는 래퍼라 실제 디코더 libzbar 버전을 따로 남긴다 |
 | v1.2 | 2026-10-27 | Pilot v0.4(#69 T5~T7): §3 Similar-label Confusion Rate의 바꿔치기에 `revision_mismatch` 포함(구 revision 라벨로 바꿔 붙인 것, E5-hard). §4 덧붙인 unit 묶음(`GEOM-boundary`, `OCR-confusable`)은 E1·E4에서 빼고 따로 평가, §9 접두사 `geom_boundary_` / `ocr_confusable_` |
+| v1.3 | 2026-10-27 | §6 r을 제품 검토 예산 R에서 역산(Pilot R=5%, #69 결정 3), risk–coverage 곡선과 AURC 정의(R 격자, E1 범위, 점마다 val 재calibration). §9 `e1_aurc`, `risk_coverage` artifact (#69 T10) |

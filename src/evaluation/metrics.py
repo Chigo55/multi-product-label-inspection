@@ -15,7 +15,7 @@ REVIEW 처리 규칙 (ADR 0002):
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
@@ -109,6 +109,46 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         "label_level": _decision_metrics(*_group(rows, decision, score, ("unit_id", "label_slot"))),
         "product_level": _decision_metrics(*_group(rows, decision, score, ("unit_id",))),
     }
+
+
+# 제품 검토 예산 R의 격자 (§6 risk-coverage). AURC를 방법끼리 비교하려면 같은 격자여야 한다 — F 미만은 쓰지 않는다
+RC_TARGETS = (0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30)
+
+
+def label_rate(product_rate: float, n_labels: int) -> float:
+    """제품 단위 비율 → 라벨 단위 비율: 1 - (1 - R)^(1/L) (§6). 라벨 오류가 독립이라는 근사다."""
+    return 1 - (1 - product_rate) ** (1 / n_labels)
+
+
+def risk_coverage(
+    rows: list[dict[str, Any]], decide_at: Callable[[float], list[str]], targets: Sequence[float]
+) -> dict[str, Any]:
+    """제품 검토 예산 R마다 (제품 Review Rate, 제품 DER, 제품 CDER) 점과 AURC (§6, #69 T10).
+
+    r 하나로 방법을 비교하면 결과가 r 선택에 좌우된다. `decide_at(R)`은 rows와 같은 순서의 판정이다 —
+    R에 맞춘 calibration은 호출자가 val에서 한다. AURC = 제품 Review Rate에 대한 제품 DER의 사다리꼴
+    면적(격자 구간). 작을수록 같은 검토량에서 덜 샌다.
+    """
+    points: list[dict[str, Any]] = []
+    for target in targets:
+        units, decision, _ = _group(rows, decide_at(target), [0.0] * len(rows), ("unit_id",))
+        defect = [
+            d for u, d in zip(units, decision, strict=True) if u["normal_or_defect"] == "defect"
+        ]
+        critical = [
+            d for u, d in zip(units, decision, strict=True) if u["defect_severity"] == "CRITICAL"
+        ]
+        points.append(
+            {
+                "product_review_target": target,
+                "review_rate": decision.count(REVIEW) / len(decision),
+                "der": defect.count(OK) / len(defect) if defect else None,
+                "cder": critical.count(OK) / len(critical) if critical else None,
+            }
+        )
+    xy = sorted((p["review_rate"], p["der"]) for p in points if p["der"] is not None)
+    aurc = float(np.trapezoid([y for _, y in xy], [x for x, _ in xy])) if len(xy) > 1 else None
+    return {"points": points, "aurc": aurc}
 
 
 def _decision_metrics(

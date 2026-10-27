@@ -27,8 +27,18 @@ import yaml
 from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
 from src.evaluation.latency import Stage, environment, measure, summarize
-from src.evaluation.metrics import NG, OK, REVIEW_POLICY, UNKNOWN, calibrate, decide
-from src.evaluation.scenarios import evaluate_scenarios
+from src.evaluation.metrics import (
+    NG,
+    OK,
+    RC_TARGETS,
+    REVIEW_POLICY,
+    UNKNOWN,
+    calibrate,
+    decide,
+    label_rate,
+    risk_coverage,
+)
+from src.evaluation.scenarios import evaluate_scenarios, scenario_rows
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
 from src.utils.pilot import check_built_version, text_sha256
@@ -40,6 +50,7 @@ from src.utils.tracking import (
     open_test,
     start_experiment,
     write_predictions,
+    write_risk_coverage,
 )
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week04_gate_check.yaml"
@@ -63,8 +74,15 @@ def score_all(rows: list[dict], labels: list[str], rng: np.random.Generator) -> 
     ]
 
 
-def run(rows: list[dict], recipe: dict, cfg: dict) -> tuple[list[dict], dict, dict]:
-    """score → 제품별 val calibration → test 판정 → 평가. rng를 매번 새로 만들어 재현성을 본다."""
+def run(
+    rows: list[dict], recipe: dict, cfg: dict, review_target: float | None = None
+) -> tuple[list[dict], dict, dict]:
+    """score → 제품별 val calibration → test 판정 → 평가. rng를 매번 새로 만들어 재현성을 본다.
+
+    f·r은 Recipe의 제품 단위 목표 F·R에서 제품별 L로 역산한다 (§6). `review_target`으로 R을 바꾸면
+    risk-coverage 점 하나가 된다.
+    """
+    review = recipe["product_review_target"] if review_target is None else review_target
     rng = np.random.default_rng(cfg["experiment"]["seed"])
     dec, split = cfg["decision"], cfg["dataset"]["split"]
     labels = [k for k, v in recipe["labels"].items() if v.get("known", True)] + [UNKNOWN]
@@ -72,11 +90,12 @@ def run(rows: list[dict], recipe: dict, cfg: dict) -> tuple[list[dict], dict, di
     for pid, spec in recipe["products"].items():
         mine = [r for r in rows if r["product_id"] == pid]
         val = [r for r in mine if r["split"] == dec["calibration_split"]]
-        f = 1 - (1 - recipe["product_false_reject_target"]) ** (1 / len(spec["slots"]))
+        f = label_rate(recipe["product_false_reject_target"], len(spec["slots"]))
+        r = label_rate(review, len(spec["slots"]))
         val_scores = [p["anomaly_score"] for p in score_all(val, labels, rng)]
-        t_ok, t_ng = calibrate(val, val_scores, f, dec["normal_review_rate"])
-        n_normal = sum(r["normal_or_defect"] == "normal" for r in val)
-        thresholds[pid] = {"f": f, "ok": t_ok, "ng": t_ng, "n_val_normal": n_normal}
+        t_ok, t_ng = calibrate(val, val_scores, f, r)
+        n_normal = sum(row["normal_or_defect"] == "normal" for row in val)
+        thresholds[pid] = {"f": f, "r": r, "ok": t_ok, "ng": t_ng, "n_val_normal": n_normal}
         test = [r for r in mine if r["split"] == split]
         preds += [
             p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)}
@@ -128,6 +147,16 @@ def main() -> None:
         raise ValueError("재현성 실패: 같은 seed로 두 번 돌린 지표가 다르다")
 
     test = [r for r in rows if r["split"] == cfg["dataset"]["split"]]
+
+    # risk-coverage (§6): F 이상의 R 격자에서 E1 범위 판정. 점마다 val에서 다시 calibration한다
+    e1 = scenario_rows(test, "E1")
+
+    def decide_at(target: float) -> list[str]:
+        by_id = {p["sample_id"]: p["decision"] for p in run(rows, recipe, cfg, target)[0]}
+        return [by_id[row["sample_id"]] for row in e1]
+
+    targets = [t for t in RC_TARGETS if t >= recipe["product_false_reject_target"]]
+    rc = risk_coverage(e1, decide_at, targets)
     units: dict[str, list[dict]] = defaultdict(list)
     for r in test:
         units[r["unit_id"]].append(r)
@@ -150,6 +179,7 @@ def main() -> None:
             for pid, t in thresholds.items()
             for key, name in (
                 ("normal_ng_rate", "f"),
+                ("normal_review_rate", "r"),
                 ("threshold_ok", "ok"),
                 ("threshold_ng", "ng"),
                 ("num_val_normal", "n_val_normal"),
@@ -169,9 +199,9 @@ def main() -> None:
                 "model_name": cfg["model"]["name"],
                 "n_shot": "none",
                 "seed": cfg["experiment"]["seed"],
-                "threshold_source": "per-product val normal quantile, f from product F",
+                "threshold_source": "per-product val normal quantile, f/r from product F/R",
                 "product_false_reject_target": recipe["product_false_reject_target"],
-                "normal_review_rate": cfg["decision"]["normal_review_rate"],
+                "product_review_target": recipe["product_review_target"],
                 "num_test": len(test),
                 "num_test_units": len(units),
                 "reproducible": reproducible,
@@ -185,7 +215,11 @@ def main() -> None:
                 lat_cfg["precision"],
             )
         )
-        mlflow.log_metrics(flat_scenario_metrics(metrics) | flat_metrics(latency))
+        mlflow.log_metrics(
+            flat_scenario_metrics(metrics)
+            | flat_metrics(latency)
+            | ({"e1_aurc": rc["aurc"]} if rc["aurc"] is not None else {})
+        )
         for path in (CONFIG_PATH, REGISTRY_PATH, recipe_path):
             mlflow.log_artifact(str(path), artifact_path="config")
         with tempfile.TemporaryDirectory() as tmp:
@@ -195,6 +229,7 @@ def main() -> None:
             )
             (Path(tmp) / "latency.json").write_text(json.dumps(latency, indent=2), encoding="utf-8")
             write_gallery(Path(tmp) / "gallery", image_root, test, preds)
+            write_risk_coverage(Path(tmp), rc, recipe["product_review_target"])
             mlflow.log_artifacts(tmp)
 
     def pct(r: dict) -> str:
@@ -235,6 +270,13 @@ def main() -> None:
     print(
         f"Latency: P50 {latency['latency_p50']:.3f} / P95 {latency['latency_p95']:.3f} ms"
         f"  (제품 {latency['latency_n']}회)"
+    )
+    print(
+        f"E1 risk-coverage (AURC {rc['aurc']:.4f}): "
+        + "  ".join(
+            f"R={p['product_review_target']:.1%}→RR {p['review_rate']:.1%} DER {p['der']:.1%}"
+            for p in rc["points"]
+        )
     )
     print("※ dummy — 숫자는 의미 없음")
 

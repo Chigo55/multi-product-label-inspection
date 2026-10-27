@@ -8,7 +8,18 @@ from collections.abc import Sequence
 import numpy as np
 import pytest
 
-from src.evaluation.metrics import NG, OK, REVIEW, UNKNOWN, calibrate, decide, evaluate, rate
+from src.evaluation.metrics import (
+    NG,
+    OK,
+    REVIEW,
+    UNKNOWN,
+    calibrate,
+    decide,
+    evaluate,
+    label_rate,
+    rate,
+    risk_coverage,
+)
 
 
 def _rows_preds(cases: Sequence[tuple[str, str, str | None]]) -> tuple[list[dict], list[dict]]:
@@ -415,3 +426,32 @@ def test_open_set_accuracy_three_states() -> None:
         pred["predicted_label_id"] = predicted
     acc = evaluate(rows, preds)["open_set_accuracy"]
     assert (acc["k"], acc["n"]) == (3, 5)
+
+
+# --- §6 제품 검토 예산 R과 risk-coverage (#69 T10) ---
+
+
+def test_label_rate_inverts_product_rate() -> None:
+    """R=5%: L=3 → r≈1.70%, L=4 → r≈1.27% (이슈 #69 T10의 예). L=1이면 그대로다."""
+    assert round(label_rate(0.05, 3), 4) == 0.0170
+    assert round(label_rate(0.05, 4), 4) == 0.0127
+    assert label_rate(0.05, 1) == pytest.approx(0.05)
+
+
+def test_risk_coverage_points_and_area() -> None:
+    """예산이 작으면 불량 제품이 OK로 새고, 크면 두 제품 다 REVIEW로 간다 — 손으로 그린 두 점의 면적 0.5."""
+    rows = [
+        {"unit_id": "bad", "normal_or_defect": "defect", "defect_severity": "CRITICAL"},
+        {"unit_id": "bad", "normal_or_defect": "normal", "defect_severity": "none"},
+        {"unit_id": "good", "normal_or_defect": "normal", "defect_severity": "none"},
+    ]
+
+    def decide_at(target: float) -> list[str]:
+        return [OK, OK, OK] if target < 0.1 else [REVIEW, OK, REVIEW]
+
+    rc = risk_coverage(rows, decide_at, [0.05, 0.2])
+    assert [(p["review_rate"], p["der"], p["cder"]) for p in rc["points"]] == [
+        (0.0, 1.0, 1.0),
+        (1.0, 0.0, 0.0),
+    ]
+    assert rc["aurc"] == pytest.approx(0.5)
