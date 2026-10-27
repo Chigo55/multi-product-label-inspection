@@ -15,7 +15,8 @@ version: v0.1
 # 라벨 단위 f = 1 - (1-F)^(1/L) 로 역산해서 calibration에 쓴다 (L = 제품당 Label Slot 수).
 product_false_reject_target: 0.01
 
-# 제품 단위 검토 예산 R: 정상 제품 중 REVIEW로 보낼 상한 (#69 결정 3, 2026-10-27). 라벨 단위 r = 1 - (1-R)^(1/L).
+# 제품 단위 검토 예산 R: 정상 제품 중 REVIEW 이상(REVIEW·NG, F 포함)으로 보낼 상한 (#69 결정 3, 2026-10-27).
+# 라벨 단위 r = 1 - (1-R)^(1/L) — calibrate의 t_ok = Q(1-r).
 # 현장 검토 인력 기준으로 다시 정한다. 바코드 합의 규칙만으로 정상 바코드 row의 약 1.8%가 REVIEW다 (Week05).
 product_review_target: 0.05
 

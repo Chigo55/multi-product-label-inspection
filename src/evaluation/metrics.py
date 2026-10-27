@@ -56,8 +56,7 @@ def calibrate(
     t_ok = Q(1-r): val 정상 중 약 r이 REVIEW 이상으로 간다.
     Q는 관측값 중에서 고르는 경험 분위수(method="higher")라 val이 작으면 해상도가 거칠다.
     """
-    if bad := sorted({str(r.get("split")) for r in rows} - {"val"}):
-        raise ValueError(f"threshold는 val로만 정한다 (받은 split: {bad})")
+    _require_val(rows, "threshold")
     normal_scores = [
         s for r, s in zip(rows, scores, strict=True) if r["normal_or_defect"] == "normal"
     ]
@@ -76,34 +75,32 @@ def normalize(
     fit_scores: Sequence[float],
     rows: list[dict[str, Any]],
     scores: Sequence[float],
-    method: str = "zscore",
-    keys: tuple[str, ...] = ("product_id", "label_slot"),
 ) -> list[float]:
-    """슬롯별 점수 정규화 (§6, #69 T12). 통계는 val 정상으로만 잡는다.
+    """슬롯별 z-score 정규화 (§6, #69 T12). 통계는 `(product_id, label_slot)`마다 val 정상으로만 잡는다.
 
     라벨 종류마다 정상 점수 분포가 달라 한 threshold로 묶으면 NG가 특정 슬롯에 몰린다. 슬롯별 분위수
     threshold는 쓸 수 없다 — 슬롯당 val 정상이 약 170행이라 f=0.334%면 꼬리에 0.57건이다. 그래서 분포를
-    맞춘 뒤 제품별 공통 분위수 threshold(`calibrate`)를 쓴다.
-    - `zscore`: (s - 평균) / 표준편차
-    - `rank`: 그 슬롯 val 정상 중 s 이하인 비율 (경험 CDF)
+    맞춘 뒤 제품별 공통 분위수 threshold(`calibrate`)를 쓴다. test 점수도 같은 변환을 거쳐야 하므로
+    calibrate와 따로 둔다. 분위수 rank 정규화는 쓰지 않는다 — f < 1/n이면 t_ng가 rank 최댓값 1.0에 붙어
+    NG가 나올 수 없다.
     """
-    if any(r["split"] != "val" for r in fit_rows):
-        raise ValueError("정규화 통계는 val에서만 잡는다 — test로 정하지 않는다 (§6)")
+    _require_val(fit_rows, "정규화 통계")
     groups: dict[tuple, list[float]] = defaultdict(list)
     for r, s in zip(fit_rows, fit_scores, strict=True):
         if r["normal_or_defect"] == "normal":
-            groups[tuple(r.get(k) for k in keys)].append(s)
-    stats = {g: np.sort(v) for g, v in groups.items()}
+            groups[(r.get("product_id"), r.get("label_slot"))].append(s)
+    stats = {g: (float(np.mean(v)), float(np.std(v)) or 1.0) for g, v in groups.items()}
     out = []
     for r, s in zip(rows, scores, strict=True):
-        v = stats[tuple(r.get(k) for k in keys)]
-        if method == "zscore":
-            out.append(float((s - v.mean()) / (v.std() or 1.0)))
-        elif method == "rank":
-            out.append(float(np.searchsorted(v, s, side="right") / len(v)))
-        else:
-            raise ValueError(f"알 수 없는 정규화: {method!r}")
+        mean, std = stats[(r.get("product_id"), r.get("label_slot"))]
+        out.append((s - mean) / std)
     return out
+
+
+def _require_val(rows: Sequence[dict[str, Any]], what: str) -> None:
+    """val이 아닌 row가 하나라도 있으면 멈춘다 — test로 정하는 경로를 코드에서 막는다 (§6)."""
+    if bad := sorted({str(r.get("split")) for r in rows} - {"val"}):
+        raise ValueError(f"{what}는 val로만 정한다 (받은 split: {bad})")
 
 
 def rate(k: int, n: int) -> dict[str, Any]:
@@ -183,33 +180,37 @@ def label_rate(product_rate: float, n_labels: int) -> float:
 
 
 def risk_coverage(
-    rows: list[dict[str, Any]], decide_at: Callable[[float], list[str]], targets: Sequence[float]
+    rows: list[dict[str, Any]], decide_at: Callable[[float], list[str]], floor: float
 ) -> dict[str, Any]:
-    """제품 검토 예산 R마다 (제품 Review Rate, 제품 DER, 제품 CDER) 점과 AURC (§6, #69 T10).
+    """제품 검토 예산 R 격자(`RC_TARGETS` 중 floor=F 이상)마다 제품 단위 점과 AURC (§6, #69 T10).
 
     r 하나로 방법을 비교하면 결과가 r 선택에 좌우된다. `decide_at(R)`은 rows와 같은 순서의 판정이다 —
-    R에 맞춘 calibration은 호출자가 val에서 한다. AURC = 제품 Review Rate에 대한 제품 DER의 사다리꼴
-    면적(격자 구간). 작을수록 같은 검토량에서 덜 샌다.
+    R에 맞춘 calibration은 호출자가 val에서 한다. 점마다 비율은 분자·분모·95% CI와 함께 낸다:
+    `normal_flagged`(정상 제품 중 REVIEW 이상 — R이 겨냥한 값), `review_rate`(전체 제품 중 REVIEW —
+    실제 검토 부담), `der` / `cder`(제품 DER / CDER).
+
+    AURC = 고정된 R 격자 위 제품 DER의 사다리꼴 면적 ÷ 구간 폭(구간 평균 DER). x축을 실제 Review Rate로
+    두면 적분 구간이 방법마다 달라 비교할 수 없다. 작을수록 같은 예산에서 덜 샌다.
     """
     points: list[dict[str, Any]] = []
-    for target in targets:
-        units, decision, _ = _group(rows, decide_at(target), [0.0] * len(rows), ("unit_id",))
-        defect = [
-            d for u, d in zip(units, decision, strict=True) if u["normal_or_defect"] == "defect"
-        ]
-        critical = [
-            d for u, d in zip(units, decision, strict=True) if u["defect_severity"] == "CRITICAL"
-        ]
+    for target in (t for t in RC_TARGETS if t >= floor):
+        units, decision, score = _group(rows, decide_at(target), [0.0] * len(rows), ("unit_id",))
+        m = _decision_metrics(units, decision, score)
+        normal = m["confusion"]["normal"]
         points.append(
             {
                 "product_review_target": target,
-                "review_rate": decision.count(REVIEW) / len(decision),
-                "der": defect.count(OK) / len(defect) if defect else None,
-                "cder": critical.count(OK) / len(critical) if critical else None,
+                "normal_flagged": rate(normal[REVIEW] + normal[NG], sum(normal.values())),
+                "review_rate": m["review_rate"],
+                "der": m["defect_escape_rate"],
+                "cder": m["critical_defect_escape_rate"],
             }
         )
-    xy = sorted((p["review_rate"], p["der"]) for p in points if p["der"] is not None)
-    aurc = float(np.trapezoid([y for _, y in xy], [x for x, _ in xy])) if len(xy) > 1 else None
+    xy = [(p["product_review_target"], p["der"]["value"]) for p in points if p["der"]["n"]]
+    aurc = None
+    if len(xy) > 1:
+        x, y = [a for a, _ in xy], [b for _, b in xy]
+        aurc = float(np.trapezoid(y, x) / (x[-1] - x[0]))
     return {"points": points, "aurc": aurc}
 
 

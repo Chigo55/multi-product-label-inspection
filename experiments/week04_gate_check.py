@@ -30,7 +30,6 @@ from src.evaluation.latency import Stage, environment, measure, summarize
 from src.evaluation.metrics import (
     NG,
     OK,
-    RC_TARGETS,
     REVIEW_POLICY,
     UNKNOWN,
     calibrate,
@@ -91,11 +90,11 @@ def run(
         mine = [r for r in rows if r["product_id"] == pid]
         val = [r for r in mine if r["split"] == dec["calibration_split"]]
         f = label_rate(recipe["product_false_reject_target"], len(spec["slots"]))
-        r = label_rate(review, len(spec["slots"]))
+        r_label = label_rate(review, len(spec["slots"]))
         val_scores = [p["anomaly_score"] for p in score_all(val, labels, rng)]
-        t_ok, t_ng = calibrate(val, val_scores, f, r)
+        t_ok, t_ng = calibrate(val, val_scores, f, r_label)
         n_normal = sum(row["normal_or_defect"] == "normal" for row in val)
-        thresholds[pid] = {"f": f, "r": r, "ok": t_ok, "ng": t_ng, "n_val_normal": n_normal}
+        thresholds[pid] = {"f": f, "r": r_label, "ok": t_ok, "ng": t_ng, "n_val_normal": n_normal}
         test = [r for r in mine if r["split"] == split]
         preds += [
             p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)}
@@ -155,8 +154,7 @@ def main() -> None:
         by_id = {p["sample_id"]: p["decision"] for p in run(rows, recipe, cfg, target)[0]}
         return [by_id[row["sample_id"]] for row in e1]
 
-    targets = [t for t in RC_TARGETS if t >= recipe["product_false_reject_target"]]
-    rc = risk_coverage(e1, decide_at, targets)
+    rc = risk_coverage(e1, decide_at, recipe["product_false_reject_target"])
     units: dict[str, list[dict]] = defaultdict(list)
     for r in test:
         units[r["unit_id"]].append(r)
@@ -278,7 +276,7 @@ def main() -> None:
     print(
         f"E1 risk-coverage (AURC {rc['aurc']:.4f}): "
         + "  ".join(
-            f"R={p['product_review_target']:.1%}→RR {p['review_rate']:.1%} DER {p['der']:.1%}"
+            f"R={p['product_review_target']:.1%}→정상 flag {pct(p['normal_flagged'])} DER {pct(p['der'])}"
             for p in rc["points"]
         )
     )

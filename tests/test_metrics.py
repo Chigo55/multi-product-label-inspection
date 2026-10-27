@@ -497,7 +497,10 @@ def test_label_rate_inverts_product_rate() -> None:
 
 
 def test_risk_coverage_points_and_area() -> None:
-    """예산이 작으면 불량 제품이 OK로 새고, 크면 두 제품 다 REVIEW로 간다 — 손으로 그린 두 점의 면적 0.5."""
+    """예산이 작으면 불량 제품이 OK로 새고, 크면 두 제품 다 REVIEW로 간다.
+
+    x축은 고정된 R 격자다 — 0.05~0.30 위 DER(1, 1, 0, 0, 0, 0)의 면적 0.0375 ÷ 폭 0.25 = 0.15.
+    """
     rows = [
         {"unit_id": "bad", "normal_or_defect": "defect", "defect_severity": "CRITICAL"},
         {"unit_id": "bad", "normal_or_defect": "normal", "defect_severity": "none"},
@@ -507,12 +510,13 @@ def test_risk_coverage_points_and_area() -> None:
     def decide_at(target: float) -> list[str]:
         return [OK, OK, OK] if target < 0.1 else [REVIEW, OK, REVIEW]
 
-    rc = risk_coverage(rows, decide_at, [0.05, 0.2])
-    assert [(p["review_rate"], p["der"], p["cder"]) for p in rc["points"]] == [
-        (0.0, 1.0, 1.0),
-        (1.0, 0.0, 0.0),
-    ]
-    assert rc["aurc"] == pytest.approx(0.5)
+    rc = risk_coverage(rows, decide_at, 0.05)
+    first, last = rc["points"][0], rc["points"][-1]
+    assert [p["product_review_target"] for p in rc["points"]] == [0.05, 0.075, 0.1, 0.15, 0.2, 0.3]
+    assert (first["der"]["k"], first["der"]["n"], first["normal_flagged"]["k"]) == (1, 1, 0)
+    assert (last["der"]["k"], last["review_rate"]["k"], last["normal_flagged"]["k"]) == (0, 2, 1)
+    assert last["der"]["ci95"] is not None  # 비율마다 분자·분모·CI (ADR 0005)
+    assert rc["aurc"] == pytest.approx(0.15)
 
 
 # --- §6 슬롯별 점수 정규화 (#69 T12) ---
@@ -536,8 +540,7 @@ def _two_slots(split: str, n: int, rng: np.random.Generator) -> tuple[list[dict]
     return rows, scores
 
 
-@pytest.mark.parametrize("method", ["zscore", "rank"])
-def test_slot_normalization_evens_out_slot_fpr(method: str) -> None:
+def test_slot_normalization_evens_out_slot_fpr() -> None:
     """한 threshold로 묶으면 NG가 점수 높은 슬롯에 몰린다. 정규화하면 슬롯별 FPR 편차가 준다."""
     rng = np.random.default_rng(0)
     val, val_scores = _two_slots("val", 400, rng)
@@ -553,13 +556,13 @@ def test_slot_normalization_evens_out_slot_fpr(method: str) -> None:
 
     raw = spread(val_scores, test_scores)
     normed = spread(
-        normalize(val, val_scores, val, val_scores, method),
-        normalize(val, val_scores, test, test_scores, method),
+        normalize(val, val_scores, val, val_scores),
+        normalize(val, val_scores, test, test_scores),
     )
     assert raw > 0.05 and normed < raw / 3
 
 
-def test_normalize_fits_on_val_normal_only() -> None:
+def test_normalize_refuses_non_val_rows() -> None:
     rows = [{"split": "test", "normal_or_defect": "normal", "product_id": "P", "label_slot": "A"}]
     with pytest.raises(ValueError, match="val"):
         normalize(rows, [0.0], rows, [0.0])

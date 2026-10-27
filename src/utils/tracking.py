@@ -96,21 +96,20 @@ def write_risk_coverage(out: Path, rc: dict[str, Any], chosen: float) -> None:
     """`risk_coverage()` 결과 → `risk_coverage.csv` + `.png` (protocol §6). chosen = 이 run이 쓴 R."""
     from matplotlib.figure import Figure  # pyplot 없이 그린다 — 전역 상태·GUI backend가 필요 없다
 
+    rows = [flat_metrics(p) for p in rc["points"]]  # 비율마다 값·k·n·CI (ADR 0005)
     with (out / "risk_coverage.csv").open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rc["points"][0]))
+        writer = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in rows for k in r)))
         writer.writeheader()
-        writer.writerows(rc["points"])
+        writer.writerows(rows)
     fig = Figure(figsize=(5, 3.5))
     ax = fig.subplots()
-    for key in ("der", "cder"):
-        pts = [(p["review_rate"], p[key]) for p in rc["points"] if p[key] is not None]
+    for key in ("der", "cder", "normal_flagged"):
+        pts = [(p["product_review_target"], p[key]["value"]) for p in rc["points"] if p[key]["n"]]
         if pts:
-            ax.plot([x for x, _ in pts], [y for _, y in pts], marker="o", label=key.upper())
-    for p in rc["points"]:
-        if p["product_review_target"] == chosen:
-            ax.axvline(p["review_rate"], linestyle=":", color="gray", label=f"R={chosen:.0%}")
-    ax.set_xlabel("Product-level Review Rate")
-    ax.set_ylabel("Product-level escape rate")
+            ax.plot([x for x, _ in pts], [y for _, y in pts], marker="o", label=key)
+    ax.axvline(chosen, linestyle=":", color="gray", label=f"R={chosen:.0%}")
+    ax.set_xlabel("Product review budget R")
+    ax.set_ylabel("Product-level rate")
     ax.set_title(
         f"risk-coverage (AURC={rc['aurc']:.4f})" if rc["aurc"] is not None else "risk-coverage"
     )

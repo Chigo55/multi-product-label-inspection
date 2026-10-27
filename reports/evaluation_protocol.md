@@ -1,4 +1,4 @@
-# Evaluation Protocol v1.6
+# Evaluation Protocol v1.7
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -213,13 +213,17 @@ Observed CDER:
   약 35%를 REVIEW로 보냈다(Week04). public은 L=1이라 r = R이다. 코드: `label_rate()`.
 - **risk–coverage**: r 하나로 방법을 비교하면 결과가 r 선택에 좌우된다. f는 고정하고 R을 격자
   `RC_TARGETS`(1, 2, 3, 5, 7.5, 10, 15, 20, 30%, F 미만은 제외)로 바꿔 가며 점마다 val에서 다시 calibration하고,
-  E1 범위의 (제품 Review Rate, 제품 DER, 제품 CDER)를 낸다. **AURC = 제품 Review Rate에 대한 제품 DER의 사다리꼴
-  면적**(격자 구간)이다 — 작을수록 같은 검토량에서 덜 샌다. 같은 격자일 때만 방법끼리 비교한다.
+  E1 범위에서 점마다 `normal_flagged`(정상 제품 중 REVIEW 이상 — R이 겨냥한 값, 예산을 지켰는지 본다),
+  `review_rate`(전체 제품 중 REVIEW — 실제 검토 부담), 제품 DER·CDER를 분자·분모·95% CI와 함께 낸다.
+  **AURC = 고정된 R 격자 위 제품 DER의 사다리꼴 면적 ÷ 구간 폭**(R 구간의 평균 DER)이다. x축을 실제 Review Rate로
+  두면 적분 구간이 방법마다 달라 비교할 수 없다(점수가 전부 같은 모델은 x가 한 점에 몰려 면적 0이 된다).
+  같은 F일 때 격자가 같으므로 방법끼리 비교된다. 작을수록 같은 예산에서 덜 샌다.
   코드: `risk_coverage()`, artifact `risk_coverage.csv` / `.png`, metric `e1_aurc`.
 - **슬롯별 점수 정규화** (#69 T12): 라벨 종류마다 정상 점수 분포가 달라 한 threshold로 묶으면 NG가 특정 슬롯에
   몰린다. 슬롯별 분위수 threshold는 쓰지 않는다 — 슬롯당 val 정상 약 170행에 f=0.334%면 꼬리가 0.57건이다.
-  대신 `(product_id, label_slot)`마다 val 정상으로 통계를 잡아 점수를 정규화(`zscore` 또는 경험 CDF `rank`)한 뒤
-  제품별 공통 분위수 threshold를 정한다. 코드: `normalize()` → `calibrate()`. 정규화 전후 `slot_fpr_spread`를 함께 보고한다.
+  대신 `(product_id, label_slot)`마다 val 정상으로 평균·표준편차를 잡아 점수를 z-score로 맞춘 뒤 제품별 공통 분위수
+  threshold를 정한다. 코드: `normalize()` → `calibrate()`. 정규화 전후 `slot_fpr_spread`를 함께 보고한다.
+  분위수 rank 정규화는 쓰지 않는다 — f < 1/n(슬롯당 n≈170, f=0.334%)이면 t_ng가 rank 최댓값 1.0에 붙어 NG가 나올 수 없다.
 - val이 작으면 분위수 해상도가 거칠다 (n=42 → 약 2.4% 단위). 보고할 때 val 정상 수를 함께 적는다.
 - `REVIEW` 구간은 두 threshold(`ok`, `ng`)로 정의한다: `score < ok → OK`, `score > ng → NG`, 사이는 `REVIEW`.
   **경계값(`score == ok` 또는 `== ng`)은 `REVIEW`** 다 — 애매하면 사람에게 보낸다.
@@ -367,3 +371,4 @@ Camera acquisition
 | v1.4 | 2026-10-27 | §3 쌍별·아이덴티티별 분해(`similar_label_confusion_rate_by_pair`, `unknown_label_ok_rate_by_label`, `n_pairs`, `n_identities`), §5 E3·E5는 아이덴티티·쌍 수를 함께 보고 (#69 T11) |
 | v1.5 | 2026-10-27 | §6 슬롯별 점수 정규화(val 정상 통계, zscore/rank → 제품별 공통 threshold), §4 슬롯별 FPR과 `slot_fpr_spread` (#69 T12) |
 | v1.6 | 2026-10-27 | §4 보조 지표 `product_detection_attributed`(불량 슬롯 자체가 잡혔을 때만 검출, ADR 0003 판정은 그대로) (#69 T13) |
+| v1.7 | 2026-10-27 | §6 risk–coverage x축을 고정된 R 격자로, AURC = 구간 평균 DER로 재정의, 점마다 `normal_flagged`와 분자·분모·CI. 슬롯 정규화는 z-score만(rank는 f < 1/n에서 NG 불가) (#69 T10·T12 리뷰) |

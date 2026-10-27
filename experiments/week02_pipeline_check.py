@@ -24,7 +24,7 @@ import yaml
 from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
 from src.evaluation.latency import Stage, environment, measure, summarize
-from src.evaluation.metrics import RC_TARGETS, REVIEW_POLICY, calibrate, decide, risk_coverage
+from src.evaluation.metrics import REVIEW_POLICY, calibrate, decide, risk_coverage
 from src.evaluation.scenarios import evaluate_scenarios
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
@@ -105,7 +105,7 @@ def main() -> None:
         ok, ng = calibrate(val, val_scores, dec["normal_ng_rate"], target)
         return [decide(p["anomaly_score"], ok, ng) for p in scored]
 
-    rc = risk_coverage(test, decide_at, [t for t in RC_TARGETS if t >= dec["normal_ng_rate"]])
+    rc = risk_coverage(test, decide_at, dec["normal_ng_rate"])
     lat_cfg = cfg["latency"]
     # 제품 1개 = test 샘플 1개 (public track은 L=1). dummy라 anomaly 구간만 있다
     latency = summarize(
