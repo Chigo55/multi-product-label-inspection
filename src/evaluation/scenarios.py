@@ -22,18 +22,29 @@ def _unknown_label(u: Unit) -> bool:
     return any(r.get("is_known_label") is False for r in u)
 
 
-def _e5_dedicated(u: Unit) -> bool:
-    """E5 전용 unit (`E5` 태그). 무작위로 생긴 바꿔치기는 `E5-<구간>`만 있어 여기 들지 않는다."""
-    return any("E5" in (r.get("experiment_tags") or []) for r in u)
+# 특정 질문을 위해 덧붙인 unit의 태그 — E1·E4에서 뺀다. 넣으면 불량 구성이 그쪽으로 쏠린다.
+# `E5`는 E5 전용 unit(무작위 바꿔치기는 `E5-<구간>`만 있어 여기 들지 않는다), 나머지 둘은 Pilot v0.4 (#69)
+DEDICATED = ("E5", "GEOM-boundary", "OCR-confusable")
+
+
+def _tags(u: Unit) -> set[str]:
+    return {t for r in u for t in r.get("experiment_tags") or []}
+
+
+def _dedicated(u: Unit) -> bool:
+    return bool(_tags(u) & set(DEDICATED))
 
 
 RULES: dict[str, Callable[[Unit], bool]] = {
     "E1": lambda u: (
-        not _unknown_label(u) and not _e5_dedicated(u) and all(r.get("is_known_defect") for r in u)
+        not _unknown_label(u) and not _dedicated(u) and all(r.get("is_known_defect") for r in u)
     ),
     "E3": _unknown_label,
-    "E4": lambda u: not _unknown_label(u) and not _e5_dedicated(u),
-    "E5": lambda u: any(t.startswith("E5-") for r in u for t in r.get("experiment_tags") or []),
+    "E4": lambda u: not _unknown_label(u) and not _dedicated(u),
+    "E5": lambda u: any(t.startswith("E5-") for t in _tags(u)),
+    # 시나리오가 아니라 덧붙인 unit 묶음 그대로 — 위치·각도 경계에서 REVIEW가 하는 일, OCR 혼동 문자
+    "GEOM-boundary": lambda u: "GEOM-boundary" in _tags(u),
+    "OCR-confusable": lambda u: "OCR-confusable" in _tags(u),
 }
 
 

@@ -62,6 +62,7 @@ NUISANCE = {
 
 
 BUILT_VERSION_FILE = "dataset_version.txt"  # build_pilot.py가 metadata 옆에 남긴다
+NUISANCE_FILE = "nuisance.jsonl"  # 샘플별 실제 촬영 조건 (#69 T8). metadata와 행 수가 같다
 
 
 def check_built_version(root: Path, version: str) -> None:
@@ -190,8 +191,12 @@ def _perspective_coeffs(
 
 def apply_nuisance(
     img: Image.Image, rng: np.random.Generator, strength: dict[str, float] | None = None
-) -> Image.Image:
-    """원근 → 조명 → blur → 노이즈. 세기를 키우면 E6 shift subset이 된다."""
+) -> tuple[Image.Image, dict[str, Any]]:
+    """원근 → 조명 → blur → 노이즈. 세기를 키우면 E6 shift subset이 된다.
+
+    실제로 뽑힌 값도 돌려준다(nuisance sidecar, #69 T8). **난수 소비 순서는 바꾸지 않는다** —
+    바꾸면 기존 이미지가 전부 달라진다.
+    """
     s = NUISANCE | (strength or {})
     w, h = img.size
 
@@ -214,10 +219,18 @@ def apply_nuisance(
     arr = np.array(img, dtype=float) * (1.0 + s["light_gain"] * (ramp - ramp.mean()) * 2)
 
     img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
-    img = img.filter(ImageFilter.GaussianBlur(rng.uniform(0.2, s["blur_px"])))
+    blur = float(rng.uniform(0.2, s["blur_px"]))
+    img = img.filter(ImageFilter.GaussianBlur(blur))
 
     arr = np.array(img, dtype=float) + rng.normal(0, s["noise_sigma"], (h, w, 3))
-    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
+    used = {
+        "warp_px": [[wx - x, wy - y] for (x, y), (wx, wy) in zip(corners, warped, strict=True)],
+        "light_angle": float(angle),
+        "light_gain": s["light_gain"],
+        "blur_radius": blur,
+        "noise_sigma": s["noise_sigma"],
+    }
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB"), used
 
 
 def render_roi(
@@ -229,8 +242,10 @@ def render_roi(
     rng: np.random.Generator,
     strength: dict[str, float] | None = None,
     label_fx: synthetic.LabelFx | None = None,
-) -> Image.Image:
-    """Label Slot 하나의 ROI 이미지. 라벨을 제품 표면에 붙이고 촬영 조건을 입힌다.
+) -> tuple[Image.Image, dict[str, Any]]:
+    """Label Slot 하나의 ROI 이미지와 실제로 쓴 촬영 조건·위치 (nuisance sidecar 한 행).
+
+    라벨을 제품 표면에 붙이고 촬영 조건을 입힌다.
 
     `spec`이 None이면 라벨이 없는 자리다(missing_label). `label_fx`는 라벨 위에만 얹는 외관 불량이다 —
     배경까지 더럽히면 "라벨 불량"이 아니라 "사진 불량"이 된다.
@@ -255,8 +270,9 @@ def render_roi(
         y = round(work[1] / 2 - label.height / 2 + offset_mm[1] * PX_PER_MM)
         canvas.paste(label, (x, y), label)
 
-    out = apply_nuisance(canvas, rng, strength)
-    return out.crop((pad, pad, pad + roi[0], pad + roi[1]))
+    out, used = apply_nuisance(canvas, rng, strength)
+    used |= {"offset_mm": list(offset_mm), "theta_deg": theta_deg}
+    return out.crop((pad, pad, pad + roi[0], pad + roi[1])), used
 
 
 # ------------------------------------------------------------
@@ -264,6 +280,8 @@ def render_roi(
 # ------------------------------------------------------------
 E5_TIERS = ("easy", "medium", "hard", "extreme")
 SWAP_TYPES = ("wrong_label", "wrong_product_label")
+# 구간 태그를 받는 라벨 바꿔치기. revision_mismatch는 구 revision 라벨로 바꿔 붙인 것이다 (#69 T5)
+TIER_TAGGED = (*SWAP_TYPES, "revision_mismatch")
 
 
 def similarity_tier(a: dict[str, Any], b: dict[str, Any]) -> str:
@@ -303,8 +321,25 @@ def e5_pairs(labels: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
 # ------------------------------------------------------------
 # metadata row 생성
 # ------------------------------------------------------------
-# (split, seq, revision, lot, defect_type, forced) — forced = (label_slot, 대신 붙일 라벨). E5 전용 unit만 쓴다
-Plan = tuple[str, int, str, str, str | None, tuple[str, str] | None]
+# (split, seq, revision, lot, defect_type, forced, tag)
+# - forced = (label_slot, 대신 붙일 라벨): E5 전용 unit과 revision_mismatch
+# - tag = unit의 모든 row에 다는 태그: `E5`(E5 전용) / `GEOM-boundary` / `OCR-confusable`.
+#   셋 다 특정 질문을 위해 덧붙인 unit이라 E1 평가 범위에서 뺀다 (ADR 0008)
+Plan = tuple[str, int, str, str, str | None, tuple[str, str] | None, str | None]
+
+
+def _v03_catalog(
+    labels: dict[str, Any], products: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """`since`가 없는 라벨과 그 라벨만으로 된 revision. v0.3 unit은 이것으로 배정해야 그림이 그대로다 —
+    새 라벨이 들어오면 revision 순환·무작위 바꿔치기 후보·E5 쌍 배정이 전부 달라진다 (#69 공통 규칙 4).
+    """
+    old = {k: v for k, v in labels.items() if "since" not in v}
+    return old, {
+        p: v
+        | {"revisions": {r: s for r, s in v["revisions"].items() if set(s.values()) <= set(old)}}
+        for p, v in products.items()
+    }
 
 
 def _unit_plan(
@@ -341,7 +376,7 @@ def _unit_plan(
         n_known = total - n_unknown if split == "test" else total
         for i in range(total):
             revs = known_revs if i < n_known else unknown_revs
-            plan.append((split, seq, revs[i % len(revs)], lots[seq % len(lots)], None, None))
+            plan.append((split, seq, revs[i % len(revs)], lots[seq % len(lots)], None, None, None))
             seq += 1
 
     defects = cfg.get("defects") or {}
@@ -362,6 +397,7 @@ def _unit_plan(
                         lots[seq % len(lots)],
                         defect_type,
                         None,
+                        None,
                     )
                 )
                 seq += 1
@@ -371,8 +407,53 @@ def _unit_plan(
         rev, slot = next(
             (r, s) for r in known_revs for s, i in product["revisions"][r].items() if i == expected
         )
-        plan.append(("test", seq, rev, lots[seq % len(lots)], defect_type, (slot, actual)))
+        plan.append(("test", seq, rev, lots[seq % len(lots)], defect_type, (slot, actual), "E5"))
         seq += 1
+    return plan
+
+
+def _v04_plan(
+    product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, Any], seq: int, share: dict
+) -> list[Plan]:
+    """v0.4 unit (#69 T5~T7). v0.3 unit 전부의 **뒤에** 붙인다. `share`는 이 제품 몫의 unit 수다.
+
+    - 새 revision(`since` 라벨이 든 것)의 정상 unit — split마다 기존 등록 revision 하나와 같은 수
+    - `revision_mismatch`: `revision_of`가 있는 라벨 자리에 구 revision 라벨을 붙인다 (val·test)
+    - `GEOM-boundary`: 허용 오차 0.9~1.2배 위치·각도 (test). 정답은 실제 값이라 정상과 불량이 섞인다
+    - `OCR-confusable`: 혼동 문자(0/O, 1/I …) 치환 `ocr_mismatch` (test)
+    """
+    revisions = product["revisions"]
+    known = [
+        r for r, s in revisions.items() if all(labels[i].get("known", True) for i in s.values())
+    ]
+    new = [r for r in known if any("since" in labels[i] for i in revisions[r].values())]
+    old = [r for r in known if r not in new]
+    plan: list[Plan] = []
+
+    def add(
+        split: str, revision: str, defect_type: str | None = None, forced=None, tag=None
+    ) -> None:
+        nonlocal seq
+        lots = cfg["lots"]["test"] if split == "test" else cfg["lots"]["fit"]
+        plan.append((split, seq, revision, lots[seq % len(lots)], defect_type, forced, tag))
+        seq += 1
+
+    n_unknown = cfg["unknown_units_per_product"] if len(known) < len(revisions) else 0
+    for split, total in cfg["units_per_product"].items():
+        for i in range((total - (n_unknown if split == "test" else 0)) // len(old) * len(new)):
+            add(split, new[i % len(new)])
+
+    swaps = [(r, s, labels[i].get("revision_of")) for r in known for s, i in revisions[r].items()]
+    swaps = [x for x in swaps if x[2]]
+    for split in ("val", "test"):
+        for i in range(share[f"revision_mismatch_{split}"] if swaps else 0):
+            r, slot, older = swaps[i % len(swaps)]
+            add(split, r, "revision_mismatch", (slot, older))
+    for defect_type in ("wrong_position", "wrong_orientation"):
+        for i in range(share["geom_boundary"]):
+            add("test", known[i % len(known)], defect_type, tag="GEOM-boundary")
+    for i in range(share["ocr_confusable"]):
+        add("test", known[i % len(known)], "ocr_mismatch", tag="OCR-confusable")
     return plan
 
 
@@ -427,12 +508,20 @@ def _row(
     }
 
 
-def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
-    """Recipe대로 이미지를 out_root에 쓰고 metadata row를 돌려준다.
+def build(
+    recipe: dict[str, Any],
+    out_root: Path,
+    namespace: str = "custom_pilot",
+    lots: dict[str, list[str]] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Recipe대로 이미지를 out_root에 쓰고 (metadata row, nuisance sidecar row)를 돌려준다.
 
     불량 unit은 Label Slot 하나에만 불량이 있고 나머지는 정상이다. 어느 자리인지는 unit_id로 정해진다.
+    `namespace`는 unit_id 접두사이자 seed 네임스페이스다 — 같은 Recipe로 그림만 다른 분석용 세트
+    (`pilot_dev`)를 만든다(#69 T9). `lots`는 그 세트의 LOT 이름이다.
     """
-    labels, cfg = recipe["labels"], recipe["build"]
+    labels, cfg = recipe["labels"], recipe["build"] | ({"lots": lots} if lots else {})
+    old_labels, old_products = _v03_catalog(labels, recipe["products"])
     overrides: dict[str, str] = recipe.get("severity_overrides") or {}
     holdout = set((cfg.get("defects") or {}).get("holdout", []))
     roi = (recipe["roi_size"][0], recipe["roi_size"][1])
@@ -440,26 +529,44 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
         p: sorted(
             {i for s in v["revisions"].values() for i in s.values() if labels[i].get("known", True)}
         )
-        for p, v in recipe["products"].items()
+        for p, v in old_products.items()
     }
     owner = {i: p for p, ids in owned.items() for i in ids}
+
+    # v0.4 unit의 제품별 몫: 전체 수를 제품 수(revision_mismatch는 revision_of가 있는 제품 수)로 나눈다
+    v04 = cfg.get("v04") or {}
+    related = [
+        p
+        for p, v in recipe["products"].items()
+        if any(labels[i].get("revision_of") for s in v["revisions"].values() for i in s.values())
+    ]
+    n = len(recipe["products"])
+    share = {
+        "geom_boundary": v04.get("geom_boundary", 0) // n,
+        "ocr_confusable": v04.get("ocr_confusable", 0) // n,
+    } | {
+        f"revision_mismatch_{split}": k // max(len(related), 1)
+        for split, k in (v04.get("revision_mismatch") or {"val": 0, "test": 0}).items()
+    }
 
     # E5 전용 unit: 구간마다 n개를 그 구간의 순서쌍에 돌아가며 배정하고, 요구된 라벨의 제품에 둔다
     e5: dict[str, list[tuple[str, str, str]]] = {p: [] for p in recipe["products"]}
     n_e5 = cfg.get("e5_units_per_tier", 0)
-    for pairs in e5_pairs(labels).values():
+    for pairs in e5_pairs(old_labels).values():
         for k in range(n_e5 if pairs else 0):
             expected, actual = pairs[k % len(pairs)]
             same = owner[expected] == owner[actual]
             e5[owner[expected]].append((SWAP_TYPES[0] if same else SWAP_TYPES[1], expected, actual))
 
     rows: list[dict[str, Any]] = []
+    nuisance: list[dict[str, Any]] = []
     for product_id, product in recipe["products"].items():
         tol = product["tolerance"]
         others = [i for p, ids in owned.items() if p != product_id for i in ids]
-        plan = _unit_plan(product, labels, cfg, e5[product_id])
-        for split, seq, revision, lot, defect_type, forced in plan:
-            unit_id = f"custom_pilot/{product_id}/{split}/{seq:05d}"
+        plan = _unit_plan(old_products[product_id], labels, cfg, e5[product_id])
+        plan += _v04_plan(product, labels, cfg, len(plan), share)
+        for split, seq, revision, lot, defect_type, forced, tag in plan:
+            unit_id = f"{namespace}/{product_id}/{split}/{seq:05d}"
             out_dir = out_root / "images" / product_id / split
             out_dir.mkdir(parents=True, exist_ok=True)
             slots: dict[str, str] = product["revisions"][revision]
@@ -480,6 +587,19 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                 broken[slot] = synthetic.Mutation(
                     defect_type, actual, labels[actual], offset, dtheta
                 )
+            elif tag == "GEOM-boundary":
+                assert defect_type is not None
+                slot = str(rng_for(unit_id).permutation(list(slots))[0])
+                rng, offset, dtheta = jitter[slot]
+                offset, dtheta, beyond = synthetic.boundary_offset(
+                    defect_type, tol, offset, dtheta, rng
+                )
+                if beyond:
+                    broken[slot] = synthetic.Mutation(
+                        defect_type, slots[slot], labels[slots[slot]], offset, dtheta
+                    )
+                else:  # 허용 오차 안이면 정상이다 — 흔들림만 경계까지 키운 정상 row
+                    jitter[slot] = (rng, offset, dtheta)
             elif defect_type is not None:
                 for label_slot in (str(s) for s in rng_for(unit_id).permutation(list(slots))):
                     rng, offset, dtheta = jitter[label_slot]
@@ -487,6 +607,7 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                         defect_type, expected_id=slots[label_slot], labels=labels,
                         same_product=owned[product_id], other_products=others,
                         tolerance=tol, offset_mm=offset, theta_deg=dtheta, rng=rng,
+                        confusable=tag == "OCR-confusable",
                     )  # fmt: skip
                     if m is not None:
                         broken[label_slot] = m
@@ -494,8 +615,7 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                 if not broken:
                     raise ValueError(f"{unit_id}: {defect_type}를 넣을 수 있는 Label Slot이 없다")
 
-            # E5 전용 unit은 모든 row에 `E5` — E1 평가 범위에서 뺀다 (ADR 0008)
-            unit_tags = ["E5"] if forced is not None else []
+            unit_tags = [tag] if tag else []
             for label_slot, identity in slots.items():
                 rng, offset, dtheta = jitter[label_slot]
                 m = broken.get(label_slot)
@@ -507,10 +627,12 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                 nominal = product["slots"][label_slot]
 
                 name = f"{seq:05d}_{label_slot}.png"
-                render_roi(
+                img, used = render_roi(
                     actual_spec, product["body"], roi, offset, nominal["theta"] + dtheta, rng,
                     label_fx=m.label_fx if m else None,
-                ).save(out_dir / name)  # fmt: skip
+                )  # fmt: skip
+                img.save(out_dir / name)
+                nuisance.append({"sample_id": f"{unit_id}/{label_slot}"} | used)
 
                 actual_position = None
                 if actual_spec is not None:
@@ -524,7 +646,7 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                 if m:
                     sev = synthetic.severity(overrides, product_id, label_slot, m)
                     defects = [{"type": m.defect_type, "severity": sev}]
-                if m and m.defect_type in SWAP_TYPES and actual_id is not None:
+                if m and m.defect_type in TIER_TAGGED and actual_id is not None:
                     # 라벨 바꿔치기는 무작위로 생긴 것이든 E5 전용이든 전부 구간 태그를 단다
                     tags = [*tags, f"E5-{similarity_tier(labels[identity], labels[actual_id])}"]
                 rows.append(
@@ -548,4 +670,4 @@ def build(recipe: dict[str, Any], out_root: Path) -> list[dict[str, Any]]:
                         experiment_tags=tags,
                     )
                 )
-    return rows
+    return rows, nuisance

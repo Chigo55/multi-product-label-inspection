@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from src.evaluation.metrics import NG, OK
 from src.evaluation.scenarios import evaluate_scenarios, scenario_rows
-from src.utils.tracking import flat_scenario_metrics
+from src.utils.tracking import flat_scenario_metrics, open_test
 
 
 def _row(unit: str, slot: str, **kw: Any) -> dict[str, Any]:
@@ -58,6 +60,8 @@ def test_scenario_membership() -> None:
         _row("e5_only", "s1", experiment_tags=["E5", "E5-extreme"], **swap),
         _row("e5_only", "s2", experiment_tags=["E5"]),
         _row("unknown", "s1", is_known_label=False),
+        _row("boundary", "s1", experiment_tags=["GEOM-boundary"]),
+        _row("confusable", "s1", experiment_tags=["OCR-confusable"], normal_or_defect="defect"),
     ]
 
     def units(scenario: str) -> set[str]:
@@ -68,6 +72,9 @@ def test_scenario_membership() -> None:
     assert units("E3") == {"unknown"}
     assert units("E4") == {"normal", "seen", "unseen", "random_swap"}
     assert units("E5") == {"random_swap", "e5_only"}
+    # 덧붙인 unit 묶음은 E1·E4에서 빠지고 따로 평가된다 (#69 T6·T7)
+    assert units("GEOM-boundary") == {"boundary"}
+    assert units("OCR-confusable") == {"confusable"}
 
 
 def test_public_track_is_all_e1() -> None:
@@ -87,3 +94,19 @@ def test_mlflow_names_carry_scenario_prefix() -> None:
     assert flat["e1_false_positive_rate_n_product"] == 1
     assert flat["e3_unknown_label_ok_rate_k"] == 0
     assert not any(k.startswith("false_positive_rate") for k in flat)
+
+
+def test_subset_names_become_valid_prefixes() -> None:
+    rows = [_row("b", "s1", experiment_tags=["GEOM-boundary"])]
+    flat = flat_scenario_metrics(evaluate_scenarios(rows, _preds(rows, [OK])))
+    assert flat["geom_boundary_review_rate_n"] == 1
+
+
+def test_sealed_test_opens_only_for_final_report() -> None:
+    """pilot test를 보면서 방향을 정하지 않는다 (#69 T9). 연 run은 태그로 남는다."""
+    cfg = {"dataset": {"name": "pilot", "split": "test"}, "experiment": {}}
+    with pytest.raises(PermissionError):
+        open_test({"test_sealed": True}, cfg)
+    cfg["experiment"]["final_report"] = True
+    assert open_test({"test_sealed": True}, cfg) == {"test_opened": "true"}
+    assert open_test({}, {"dataset": {"split": "test"}, "experiment": {}}) == {}  # pilot_dev·public

@@ -30,6 +30,7 @@ uv run pyrefly check             # type check
 
 uv run experiments/build_metadata.py mvtec_ad  # 원본을 registry의 root에 풀어 둔 뒤 metadata 생성 (mvtec_loco, visa도 같음)
 uv run experiments/build_pilot.py             # 자체 Pilot benchmark 생성 (Recipe → 정상·불량 이미지 + metadata, 약 5분)
+uv run experiments/build_pilot.py pilot_dev   # 같은 Recipe, 그림만 다른 분석용 세트 (Week 5~16 보고·실패 분석)
 uv run experiments/week02_pipeline_check.py   # dummy 예측 → 평가 → MLflow (레일 점검)
 uv run experiments/week04_gate_check.py   # Pilot에서 3-level·identity 지표 + 재현성 + §9 보고 세트 (Month 1 Gate)
 uv run experiments/week05_barcode_check.py # val 바코드 판독률·오판독, 디코더 합의 규칙 점검
@@ -134,6 +135,8 @@ pytest는 `pythonpath = ["."]`, pyrefly는 `search-path = ["."]`로 같은 규�
 - 어떤 RQ에도 연결되지 않는 실험은 하지 않는다. 실험 시작 전에 RQ와 Scenario를 먼저 적는다.
 - `notebooks/`는 즉흥 탐색 전용이다. **논문·보고서에 인용할 숫자는 `experiments/`에서만** 나온다.
 - threshold는 `val`(또는 calibration) split에서 정한다. **`test`로 정하지 않는다.**
+- **`pilot` test는 봉인이다**(registry `test_sealed`). 분석·gallery·Week 5~16 보고는 `pilot_dev`로 하고, 최종 보고 run만
+  config `experiment.final_report: true`로 연다(`open_test()`가 막고, 연 run에 `test_opened=true`가 남는다).
 - `expected_*` / `actual_*`에 모델 출력을 쓰지 않는다. predicted 값은 실험 결과 파일에 따로 남긴다.
 - `unknown_visual`이 붙은 샘플은 **어떤 형태로도** 학습·threshold calibration에 쓰지 않는다.
 - 원본 데이터, 모델 weight, `mlflow.db`는 커밋하지 않는다(`.gitignore` 참고).

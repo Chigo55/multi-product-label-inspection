@@ -19,10 +19,12 @@ from typing import Any
 import pytest
 import yaml
 
-from src.utils.metadata import find_errors
+from src.utils.metadata import find_errors, read_jsonl
 from src.utils.pilot import (
     BUILT_VERSION_FILE,
     E5_TIERS,
+    NUISANCE_FILE,
+    build,
     check_built_version,
     e5_pairs,
     render_label,
@@ -105,6 +107,21 @@ def test_barcode_only_pair_is_pixel_identical_except_bars(recipe: dict[str, Any]
     assert render_label(b3).tobytes() == render_label(b4).tobytes()
 
 
+def test_ocr_only_pair_shares_barcode(recipe: dict[str, Any]) -> None:
+    """a-2 / a-5: 바코드가 같고 인쇄 REV만 다르다 — 바코드로는 못 가르고 OCR만 가른다 (#69 T5)."""
+    a2, a5 = recipe["labels"]["a-2"], recipe["labels"]["a-5"]
+    assert similarity_tier(a2, a5) == "hard"
+    assert a2["barcode"] == a5["barcode"] and a5["revision_of"] == "a-2"
+
+
+def test_new_labels_belong_to_a_revision(recipe: dict[str, Any]) -> None:
+    """카탈로그에만 있는 라벨은 owner가 없어 배정에서 KeyError가 난다 (#69 T5)."""
+    used = {
+        i for p in recipe["products"].values() for s in p["revisions"].values() for i in s.values()
+    }
+    assert set(recipe["labels"]) == used
+
+
 def test_unknown_labels_exist(recipe: dict[str, Any]) -> None:
     unknown = [i for i, s in recipe["labels"].items() if not s.get("known", True)]
     assert unknown, "E3용 미등록 라벨이 없다"
@@ -160,14 +177,14 @@ def test_render_is_deterministic_per_sample_id(recipe: dict[str, Any]) -> None:
     spec = recipe["labels"]["a-2"]
 
     def once() -> bytes:
-        return render_roi(
-            spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("x/slot-1")
-        ).tobytes()
+        return render_roi(spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("x/slot-1"))[
+            0
+        ].tobytes()
 
     assert once() == once()
-    other = render_roi(
-        spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("y/slot-1")
-    ).tobytes()
+    other = render_roi(spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("y/slot-1"))[
+        0
+    ].tobytes()
     assert once() != other, "sample_id가 달라도 같은 그림이면 정상 변이가 없는 것이다"
 
 
@@ -223,12 +240,12 @@ def test_every_tier_has_pairs(recipe: dict[str, Any]) -> None:
 
 
 def test_swap_rows_carry_their_tier_tag(pilot_small: Small) -> None:
-    """바꿔치기 불량은 전부, 그리고 그것만 E5 태그를 받는다. 태그는 (요구, 실제) 쌍의 구간이다."""
+    """바꿔치기 불량(revision_mismatch 포함)은 전부, 그리고 그것만 E5 태그를 받는다. 태그는 (요구, 실제) 쌍의 구간이다."""
     recipe, rows, _ = pilot_small
     labels = recipe["labels"]
     for r in rows:
         e5 = [t for t in r["experiment_tags"] if t.startswith("E5-")]
-        if r["defect_type"] in ("wrong_label", "wrong_product_label"):
+        if r["defect_type"] in ("wrong_label", "wrong_product_label", "revision_mismatch"):
             tier = similarity_tier(labels[r["expected_label_id"]], labels[r["actual_label_id"]])
             assert e5 == [f"E5-{tier}"]
         else:
@@ -270,3 +287,51 @@ def test_extreme_rows_differ_only_in_barcode(pilot_small: Small) -> None:
     for r in extreme:
         assert r["actual_text"] == r["expected_text"]
         assert r["actual_barcode"] != r["expected_barcode"]
+
+
+def test_revision_mismatch_attaches_the_older_revision(pilot_small: Small) -> None:
+    """구 revision 라벨(a-2)을 새 revision 자리(a-5)에 붙인다. 바코드가 같은 E5-hard 쌍이다."""
+    _, rows, _ = pilot_small
+    found = [r for r in rows if r["defect_type"] == "revision_mismatch"]
+    assert {r["split"] for r in found} == {"val", "test"}
+    for r in found:
+        assert (r["expected_label_id"], r["actual_label_id"]) == ("a-5", "a-2")
+        assert r["actual_barcode"] == r["expected_barcode"] and r["defect_severity"] == "CRITICAL"
+        assert r["experiment_tags"] == ["E5-hard"]
+
+
+def test_v03_units_are_unchanged(
+    pilot_small: Small, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """v0.4 추가분(`since` 라벨, 그 revision, v04 블록)을 빼고 만든 결과가 v0.4 빌드의 앞부분과
+    metadata·이미지 바이트까지 같다 — 새 unit은 뒤에 붙고 기존 unit을 흔들지 않는다 (#69 공통 규칙 4).
+    """
+    small, rows, root = pilot_small
+    old = copy.deepcopy(small)
+    old["labels"] = {k: v for k, v in old["labels"].items() if "since" not in v}
+    for p in old["products"].values():
+        p["revisions"] = {
+            r: s for r, s in p["revisions"].items() if set(s.values()) <= set(old["labels"])
+        }
+    del old["build"]["v04"]
+    old_root = tmp_path_factory.mktemp("pilot_small_v03")
+    old_rows, _ = build(old, old_root)
+
+    by_id = {r["sample_id"]: r for r in rows}
+    assert len(rows) > len(old_rows)
+    for r in old_rows:
+        assert by_id[r["sample_id"]] == r
+        assert (root / r["image_path"]).read_bytes() == (old_root / r["image_path"]).read_bytes()
+
+
+def test_nuisance_sidecar_has_one_row_per_sample(pilot_small: Small) -> None:
+    """실제로 뽑힌 촬영 조건 (#69 T8). sample_id 키, metadata와 행 수가 같고 위치도 metadata와 맞는다."""
+    _, rows, root = pilot_small
+    sidecar = {x["sample_id"]: x for x in read_jsonl(root / NUISANCE_FILE)}
+    assert sidecar.keys() == {r["sample_id"] for r in rows}
+    for r in rows:
+        x = sidecar[r["sample_id"]]
+        assert 0.2 <= x["blur_radius"] <= 0.9 and len(x["warp_px"]) == 4
+        if r["actual_position"]:
+            dx = r["actual_position"]["x"] - r["expected_position"]["x"]
+            assert abs(dx - x["offset_mm"][0]) < 1e-3

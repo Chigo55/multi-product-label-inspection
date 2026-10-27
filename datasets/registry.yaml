@@ -40,17 +40,32 @@ visa:
   downloaded: 2026-09-21
 
 pilot:
-  version: "0.4"                    # 0.3 → 0.4 (#69 T2~T9에서 구성 중): E5 전용 unit에 `E5` 태그(T2). 0.3의 unit·그림은 그대로다
-                                    #   T9까지 끝난 뒤 build_pilot.py로 생성한다. 그 전 metadata(0.3)로는 실험하지 않는다
+  version: "0.4"                    # 0.3 → 0.4 (#69): E5 전용 unit `E5` 태그(T2), a-5·revision "06"·revision_mismatch(T5),
+                                    #   GEOM-boundary(T6), OCR-confusable(T7), nuisance.jsonl(T8). 0.3의 unit·그림은 그대로이고 새 unit은 뒤에 붙는다
                                     # 0.2 → 0.3: E5 전용 unit + E5 태그 (#35). 0.2의 unit·그림은 그대로다
                                     # 0.1 → 0.2: synthetic defect 10종 추가 (#34). 정상 unit·그림은 0.1과 같다
-  schema: v1.1.1
+  schema: v1.1.2
   converter: src/utils/pilot.py     # 생성: uv run experiments/build_pilot.py
   root: datasets/custom/pilot
   metadata: datasets/custom/pilot/metadata.jsonl
   recipe: configs/recipes/pilot.yaml
   source: 생성물 — 원본 아카이브가 없다. Recipe + 변환기 + sample_id seed만으로 결정된다
-  sha256: 76bd52763940a5123bd4f468184df35f222a88c065f1cbbae8564b71eab1231d   # 원본 아카이브 대신 **Recipe 파일**의 해시다. Recipe 내용이 바뀌면 version을 올린다
-                                    # 줄바꿈을 LF로 맞춘 해시다 (#69 T1). 이전 값 ab7526eb…는 Windows CRLF 체크아웃의 해시였다 — Recipe 내용은 같아서 version은 그대로 둔다
+  sha256: 8c795bf34bf0895f89dd75d2fdd6f42829d49fbff4fc8b46b72e75bcf5c1745d   # 원본 아카이브 대신 **Recipe 파일**의 해시다. Recipe 내용이 바뀌면 version을 올린다
+                                    # 줄바꿈을 LF로 맞춘 해시다 (#69 T1). v0.3의 LF 해시는 76bd5276…(CRLF로는 ab7526eb…)
+  test_sealed: true                 # test는 config `experiment.final_report: true`일 때만 연다 — 분석은 pilot_dev로 (#69 T9). 첫 개봉 Week 18
   license: 이 저장소와 동일. 라벨은 전부 합성이고 외부 이미지를 쓰지 않는다 (#6와 무관)
   downloaded: null                  # 받은 데이터가 아니다
+
+pilot_dev:                          # 실패 분석·방향 결정용 (#69 T9). pilot test를 보지 않고 Failure Gallery·Research Gap을 본다
+  version: "0.4"                    # pilot과 같은 Recipe·변환기 version
+  schema: v1.1.2
+  converter: src/utils/pilot.py     # 생성: uv run experiments/build_pilot.py pilot_dev
+  root: datasets/custom/pilot_dev
+  metadata: datasets/custom/pilot_dev/metadata.jsonl
+  recipe: configs/recipes/pilot.yaml
+  namespace: custom_pilot_dev       # unit_id 접두사 = seed 네임스페이스. 구성은 pilot과 같고 그림만 다르다
+  lots: {fit: [L2691, L2692], test: [L2693, L2694]}
+  source: 생성물 — pilot과 같은 Recipe·변환기, 다른 seed 네임스페이스
+  sha256: 8c795bf34bf0895f89dd75d2fdd6f42829d49fbff4fc8b46b72e75bcf5c1745d   # pilot과 같은 Recipe 해시
+  license: 이 저장소와 동일
+  downloaded: null

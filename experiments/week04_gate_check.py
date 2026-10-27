@@ -37,6 +37,7 @@ from src.utils.tracking import (
     flat_scenario_metrics,
     git_commit,
     git_is_dirty,
+    open_test,
     start_experiment,
     write_predictions,
 )
@@ -107,6 +108,7 @@ def write_gallery(out: Path, image_root: Path, test: list[dict], preds: list[dic
 def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     reg = load_yaml(REGISTRY_PATH)[cfg["dataset"]["name"]]
+    test_tags = open_test(reg, cfg)  # 봉인된 pilot test는 final_report일 때만 (#69 T9)
     recipe_path = REPO_ROOT / reg["recipe"]
     recipe_sha = text_sha256(recipe_path.read_bytes())
     if recipe_sha != reg["sha256"]:
@@ -141,7 +143,7 @@ def main() -> None:
 
     start_experiment(cfg["tracking"]["experiment_name"])
     with mlflow.start_run(run_name="dummy-pilot") as run_info:
-        mlflow.set_tags({"purpose": "month1_gate", "citable": "false"})
+        mlflow.set_tags({"purpose": "month1_gate", "citable": "false"} | test_tags)
         # Pilot은 제품마다 L이 달라 f와 threshold가 제품별이다 → `{이름}_{제품}`
         per_product = {
             f"{key}_{pid}": t[name]

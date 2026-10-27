@@ -11,7 +11,7 @@ experiment:
   notes: "Pilot에서 3-level·identity·E3·E5 지표 계산, 재현성, protocol §9 보고 세트 확인"
 
 dataset:
-  name: pilot                    # datasets/registry.yaml 키 (root/version/metadata/recipe는 거기서)
+  name: pilot_dev                # datasets/registry.yaml 키. pilot test는 봉인 — 점검·gallery는 pilot_dev (#69 T9)
   split: test
 
 model:

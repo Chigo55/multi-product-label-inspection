@@ -26,6 +26,8 @@ roi_size: [256, 256]
 # ------------------------------------------------------------
 # layout: plate | tag | warning | food   (src/utils/pilot.py)
 # known:  false면 onboarding되지 않은 라벨 → E3. 이 라벨이 든 unit은 test에만 둔다.
+# since:  이 버전에서 추가된 라벨. 그 전 버전의 unit은 이 라벨 없이 배정해 그림이 그대로다 (#69)
+# revision_of: 이 라벨의 구 revision. revision_mismatch = 이 라벨 자리에 구 revision 라벨을 붙인 것
 labels:
   # --- Product A: 전장 부품 ---
   a-1:
@@ -46,12 +48,20 @@ labels:
     font: sans
     text: {TITLE: "A-SERIES"}
     barcode: "XA1091"
-  a-4:                                   # a-2와 문자 2글자만 다르다 (E5-hard / OCR-only)
+  a-4:                                   # a-2와 인쇄 문자 2글자가 다르고 바코드도 다르다 (E5-hard)
     layout: plate
     palette: steel
     font: mono
     text: {MODEL: "XA-108", REV: "04", PART: "P-4471"}
     barcode: "XA1083"
+  a-5:                                   # a-2의 다음 revision. 바코드는 품번만 담아 a-2와 같고 인쇄 REV만 다르다
+    layout: plate                        # (E5-hard / OCR-only — 바코드로는 구별되지 않는다)
+    palette: steel
+    font: mono
+    text: {MODEL: "XA-100", REV: "06", PART: "P-4471"}
+    barcode: "XA1003"
+    revision_of: a-2
+    since: "0.4"
 
   # --- Product B: 화학 용기 ---
   b-1:
@@ -141,6 +151,7 @@ products:
       "03": {slot-1: a-1, slot-2: a-2, slot-3: a-3}
       "04": {slot-1: a-1, slot-2: a-4, slot-3: a-3}
       "05": {slot-1: a-1, slot-2: u-1, slot-3: a-3}
+      "06": {slot-1: a-1, slot-2: a-5, slot-3: a-3}   # v0.4 (a-5)
   B:
     name: 화학 용기
     body: plastic_dark
@@ -223,3 +234,11 @@ build:
   # 각 unit은 Label Slot 한 곳의 라벨이 그 구간의 짝으로 바뀐 wrong_label / wrong_product_label이다.
   # 무작위 바꿔치기 불량도 같은 규칙으로 E5 태그를 받는다. 72 = escape 0건이면 95% 상한 ≤ 5%
   e5_units_per_tier: 72
+
+  # v0.4 unit (#69 T5~T7). 위 unit 전부의 **뒤에** 붙는다 — v0.3 unit은 v0.3 카탈로그로 배정해 그림이 그대로다.
+  # 새 revision("06")의 정상 unit은 split마다 기존 등록 revision 하나와 같은 수가 자동으로 붙는다.
+  # 수는 전체 합이고 제품 수로 나눈다 (revision_mismatch는 revision_of가 있는 제품 수로).
+  v04:
+    revision_mismatch: {val: 24, test: 72}   # 구 revision 라벨을 붙인다 (a-5 자리에 a-2). E5-hard 태그도 받는다
+    geom_boundary: 72           # wrong_position / wrong_orientation 각각. 허용 오차 0.9~1.2배 → 정상·불량이 섞인다
+    ocr_confusable: 72          # 혼동 문자(0/O 1/I 5/S 8/B 2/Z 6/G) ocr_mismatch. 기존 ocr_mismatch는 그대로 둔다

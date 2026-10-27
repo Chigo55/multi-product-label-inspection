@@ -1,4 +1,4 @@
-# Evaluation Protocol v1.1
+# Evaluation Protocol v1.2
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -91,7 +91,7 @@ positive = defect 기준.
 | **Known Label Accuracy** | `is_known_label=true` 샘플에서 `actual_label_id`를 맞춘 비율 |
 | **Unknown Label Detection Rate** | `is_known_label=false` 샘플을 `UNKNOWN`으로 거부한 비율 |
 | **Unknown Forced Rate** | `is_known_label=false` 샘플을 **등록 라벨 id로 억지 분류**한 비율 (아래 경고의 별도 실패 유형) |
-| **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
+| **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label` / `revision_mismatch`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
 | **Unknown Label OK Rate** | `is_known_label=false` row 중 판정이 `OK`인 비율 (`unknown_label_ok_rate`). **E3의 주 성공 기준**(0건 + 상한). 판정만 쓰므로 identity를 내지 않는 AD 모델에도 적용된다 |
 | Open-set 상태 정확도 | `KNOWN_EXPECTED` / `KNOWN_WRONG` / `UNKNOWN` 3-class 정확도 (`open_set_accuracy`). 정답은 `is_known_label`과 `actual_label_id` vs `expected_label_id`, 예측은 `predicted_label_id` vs `expected_label_id`로 정한다. 어떤 틀린 라벨인지는 보지 않는다 |
 
@@ -158,6 +158,7 @@ Product-level에서 정상으로 집계된다. `CRITICAL`은 Critical Defect Esc
 위 지표 묶음은 test 전체가 아니라 **시나리오마다 범위를 잘라 따로** 계산한다. 미등록 라벨을 NG로 거부한 row도
 `normal`이라, 전체를 한 번에 평가하면 E3의 정답이 E1의 과검으로 잡힌다. **F 판단과 헤드라인 FPR·DER은 E1
 결과만 쓴다.** 범위는 unit 단위로 고르고 한 unit의 row를 쪼개지 않는다 — 쪼개면 Product-level 판정이 달라진다.
+특정 질문을 위해 덧붙인 unit 묶음(E5 전용, `GEOM-boundary`, `OCR-confusable`)은 E1·E4에서 빼고 각각 따로 평가한다.
 규칙의 정본은 `experiment_scenarios.md` "평가 범위", 코드는 `src/evaluation/scenarios.py`
 `evaluate_scenarios()`다. 범위가 빈 시나리오는 결과에 없다(0%로 보고하지 않는다).
 
@@ -282,7 +283,7 @@ Camera acquisition
 [artifacts] config 사본, FP/FN gallery, latency breakdown(`latency.json`: 구간별 평균 + 시간대별 제품 수), evidence 예시
 ```
 
-지표 이름 앞에는 **시나리오 접두사** `e1_` / `e3_` / `e4_` / `e5_`를 붙인다(§4 시나리오 범위, ADR 0008).
+지표 이름 앞에는 **범위 접두사** `e1_` / `e3_` / `e4_` / `e5_` / `geom_boundary_` / `ocr_confusable_`를 붙인다(§4 시나리오 범위, ADR 0008).
 예: `e1_defect_escape_rate`, `e1_false_positive_rate_product`, `e3_unknown_label_ok_rate`. latency 지표는
 제품 1개 처리 시간이라 시나리오와 무관하므로 접두사가 없다. 접두사 없는 전체 평가 지표는 기록하지 않는다.
 
@@ -342,3 +343,4 @@ Camera acquisition
 | v0.9 | 2026-10-06 | Month 1 Gate(#39): §3 Unknown Label OK Rate(E3 주 기준)·Open-set 정확도 코드화, §6 val 전용 calibration을 코드로 강제, §9 Pilot 제품별 threshold param과 신규 지표 |
 | v1.0 | 2026-10-27 | §4 시나리오 범위(ADR 0008): 시나리오마다 unit 단위로 잘라 평가, F·헤드라인 FPR/DER은 E1만. §3 지표별 해당 시나리오. §9 지표 이름에 시나리오 접두사(`e1_` …), `metrics.json`은 시나리오별 (#69 T2) |
 | v1.1 | 2026-10-27 | §9.1 `barcode_result` 열 정의(두 디코더 합의, #69 T3·#66). 디코더 이름·버전은 param(`barcode_decoders`, `pyzbar_version`, `zbar_version`, `zxing_cpp_version`) — pyzbar는 래퍼라 실제 디코더 libzbar 버전을 따로 남긴다 |
+| v1.2 | 2026-10-27 | Pilot v0.4(#69 T5~T7): §3 Similar-label Confusion Rate의 바꿔치기에 `revision_mismatch` 포함(구 revision 라벨로 바꿔 붙인 것, E5-hard). §4 덧붙인 unit 묶음(`GEOM-boundary`, `OCR-confusable`)은 E1·E4에서 빼고 따로 평가, §9 접두사 `geom_boundary_` / `ocr_confusable_` |

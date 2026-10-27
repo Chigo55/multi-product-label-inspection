@@ -71,7 +71,10 @@ def severity(overrides: dict[str, str], product_id: str, slot: str, m: Mutation)
 # 내용 변형 — 문자 1개만 바꾼다
 # ------------------------------------------------------------
 def _change_one_char(text: str, rng: np.random.Generator) -> str:
-    """숫자는 다른 숫자로, 영문자는 다른 영문자로. 모양이 비슷한 쌍이 나오도록 한 글자만 바꾼다."""
+    """한 글자만 바꾼다. 숫자는 다른 숫자로, 영문자는 다른 영문자로 **균등하게** 뽑는다.
+
+    그래서 실제 OCR이 틀리는 0/O, 1/I 같은 숫자↔영문 혼동은 나오지 않는다 — 그건 `_change_confusable`.
+    """
     positions = [i for i, c in enumerate(text) if c.isalnum()]
     i = int(rng.choice(positions))
     pool = "0123456789" if text[i].isdigit() else "ABCDEFGHJKLMNPRSTUVWXYZ"
@@ -80,6 +83,41 @@ def _change_one_char(text: str, rng: np.random.Generator) -> str:
     return (
         text[:i] + (new if text[i].isupper() or text[i].isdigit() else new.lower()) + text[i + 1 :]
     )
+
+
+# OCR이 실제로 헷갈리는 숫자↔영문 쌍 (#69 T7)
+CONFUSABLE = {"0": "O", "1": "I", "5": "S", "8": "B", "2": "Z", "6": "G"}
+CONFUSABLE |= {v: k for k, v in CONFUSABLE.items()}
+
+
+def _change_confusable(text: str, rng: np.random.Generator) -> str | None:
+    """혼동 쌍이 있는 글자 하나를 짝으로 바꾼다. 그런 글자가 없으면 None."""
+    positions = [i for i, c in enumerate(text) if c in CONFUSABLE]
+    if not positions:
+        return None
+    i = int(rng.choice(positions))
+    return text[:i] + CONFUSABLE[text[i]] + text[i + 1 :]
+
+
+def boundary_offset(
+    defect_type: str,
+    tolerance: dict[str, float],
+    offset_mm: tuple[float, float],
+    theta_deg: float,
+    rng: np.random.Generator,
+) -> tuple[tuple[float, float], float, bool]:
+    """허용 오차의 0.9~1.2배로 한 축만 민다 (#69 T6 경계 표본). (offset, theta, 허용 오차를 넘었는가).
+
+    `wrong_position`/`wrong_orientation`(1.3배 이상)과 정상 흔들림(0.8배 이내) 사이의 빈 구간을 채운다.
+    정답은 실제 값으로 정한다 — 허용 오차 이하면 정상이다.
+    """
+    factor = float(rng.uniform(0.9, 1.2))
+    sign = float(rng.choice([-1, 1]))
+    if defect_type == "wrong_orientation":
+        return offset_mm, factor * sign * tolerance["theta_deg"], factor > 1.0
+    shift = factor * sign * tolerance["xy_mm"]
+    offset = (shift, offset_mm[1]) if rng.random() < 0.5 else (offset_mm[0], shift)
+    return offset, theta_deg, factor > 1.0
 
 
 # ------------------------------------------------------------
@@ -130,10 +168,12 @@ def mutate(
     offset_mm: tuple[float, float],
     theta_deg: float,
     rng: np.random.Generator,
+    confusable: bool = False,
 ) -> Mutation | None:
     """Label Slot 하나에 defect_type을 가한다. 그 자리에 적용할 수 없으면(바코드 없는 라벨 등) None.
 
     offset_mm / theta_deg는 정상 흔들림이다. 위치·회전 불량이 아니면 그대로 둔다.
+    `confusable`이면 `ocr_mismatch`를 혼동 문자 치환으로 만든다 — 그런 글자가 없는 라벨은 None.
     """
     spec = labels[expected_id]
     keep = {"offset_mm": offset_mm, "theta_deg": theta_deg}
@@ -146,6 +186,15 @@ def mutate(
         ]
         other = str(rng.choice(pool))
         return Mutation(defect_type, other, labels[other], **keep)
+
+    if defect_type == "ocr_mismatch" and confusable:
+        fields = [k for k, v in spec["text"].items() if any(c in CONFUSABLE for c in v)]
+        if not fields:
+            return None
+        field = str(rng.choice(fields))
+        actual = copy.deepcopy(spec)
+        actual["text"][field] = _change_confusable(spec["text"][field], rng)
+        return Mutation(defect_type, expected_id, actual, ocr_field=field, **keep)
 
     if defect_type == "ocr_mismatch":
         field = str(rng.choice(list(spec["text"])))

@@ -1,4 +1,4 @@
-# Experiment Scenarios v1.4
+# Experiment Scenarios v1.5
 
 > 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-10-27 / 이슈: #31, #33, #34, #35, #69
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
@@ -13,6 +13,9 @@
 - 비율 지표는 분자/분모 + Clopper-Pearson 양측 95% 구간을 함께 보고한다 (ADR 0005).
 - 3-level(Defect / Label / Product)로 보고한다. public track은 Label = Product다.
 - 랜덤성이 있으면(few-shot 샘플링 등) 최소 3 seed, 평균 ± 표준편차.
+- **Week 5~16 보고 수치와 실패 분석(Failure Gallery, Research Gap)은 `pilot_dev`에서 낸다.** `pilot`의 test는 봉인이고
+  (registry `test_sealed`), config `experiment.final_report: true`일 때만 열린다 — 첫 개봉 Week 18 (#69 T9).
+  `pilot_dev`는 같은 Recipe·변환기로 seed 네임스페이스(`custom_pilot_dev/`)와 LOT만 다르게 만든 세트다.
 - "escape 0건"을 주장하려면 표본이 먼저 있어야 한다. 0건일 때 95% 상한이 **5% 이하면 72건, 1% 이하면 368건** 이상 필요하다.
 
 ## 요약
@@ -36,12 +39,15 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 
 | ID | 범위에 드는 unit | 쓰는 결과 |
 |---|---|---|
-| E1 | 미등록 라벨이 없고 모든 row가 `is_known_defect=true`이며 E5 전용 unit(`E5` 태그)이 아닌 unit | F 판단, 헤드라인 DER·CDER·FPR·Review Rate |
+| E1 | 미등록 라벨이 없고 모든 row가 `is_known_defect=true`이며 덧붙인 unit(`E5`·`GEOM-boundary`·`OCR-confusable` 태그)이 아닌 unit | F 판단, 헤드라인 DER·CDER·FPR·Review Rate |
 | E3 | 미등록 라벨(`is_known_label=false`)이 하나라도 있는 unit | Unknown Label OK Rate, Detection·Forced Rate |
-| E4 | 미등록 라벨이 없고 E5 전용이 아닌 unit — E1에 hold-out 유형 unit을 더한 것. hold-out 유형이 하나도 없으면(public) 비운다 | 유형별 DER로 seen vs unseen |
-| E5 | `E5-<구간>` 태그 row가 있는 unit (무작위 바꿔치기 + 전용 unit) | 구간별 Similar-label Confusion Rate |
+| E4 | 미등록 라벨이 없고 덧붙인 unit이 아닌 unit — E1에 hold-out 유형 unit을 더한 것. hold-out 유형이 하나도 없으면(public) 비운다 | 유형별 DER로 seen vs unseen |
+| E5 | `E5-<구간>` 태그 row가 있는 unit (무작위 바꿔치기 + 전용 unit + `revision_mismatch`) | 구간별 Similar-label Confusion Rate |
+| `GEOM-boundary` | 위치·각도가 허용 오차의 0.9~1.2배인 경계 unit (Pilot v0.4, test). 정답은 실제 값 — 정상과 불량이 섞인다 | 경계에서 DER·FPR·Review Rate (REVIEW가 하는 일) |
+| `OCR-confusable` | 혼동 문자(0/O, 1/I, 5/S, 8/B, 2/Z, 6/G) 치환 `ocr_mismatch` unit (Pilot v0.4, test) | OCR이 실제로 틀리는 글자에서의 DER |
 
-- E5 전용 unit은 E1에서 뺀다 — 넣으면 E1의 불량 구성이 바꿔치기 쪽으로 쏠린다. 무작위로 생긴 바꿔치기는 E1에 남는다.
+- 덧붙인 unit(E5 전용, `GEOM-boundary`, `OCR-confusable`)은 E1에서 뺀다 — 넣으면 E1의 불량 구성이 그쪽으로 쏠린다.
+  무작위로 생긴 바꿔치기와 `revision_mismatch`(유형당 72 unit, 다른 유형과 같은 수)는 E1에 남는다.
 - public track은 `is_known_label`이 비어 있고 태그가 없으므로 전부 E1이다. 범위가 빈 시나리오는 결과에 없다.
 - E2·E6는 해당 데이터(reference k-shot, shift subset)가 생길 때 범위를 추가한다.
 
@@ -108,17 +114,21 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 
   | 구간 | 규칙 | Pilot 쌍 수 | 예 |
   |---|---|---:|---|
-  | Easy | layout·palette·font 중 하나라도 다르다 | 51 | a-1 / c-1 |
+  | Easy | layout·palette·font 중 하나라도 다르다 | 59 | a-1 / c-1 |
   | Extreme | 겉모습과 인쇄 문자가 전부 같다 (바코드만 다름) | 1 | b-3 / b-4 |
-  | Hard | 같은 field·같은 글자 수, 다른 글자 ≤ 2개 | 3 | a-2 / a-4, a-3 / b-3, a-3 / b-4 |
-  | Medium | 나머지 — 겉모습은 같고 내용이 여러 곳 다르다 | 11 | a-2 / b-2 |
+  | Hard | 같은 field·같은 글자 수, 다른 글자 ≤ 2개 | 5 | a-2 / a-4, a-3 / b-3, a-3 / b-4, **a-2 / a-5**(바코드 같음), a-4 / a-5 |
+  | Medium | 나머지 — 겉모습은 같고 내용이 여러 곳 다르다 | 13 | a-2 / b-2 |
+
+  쌍 수는 Pilot v0.4 카탈로그 기준이다. a-5(v0.4)가 든 쌍에는 E5 전용 unit이 없다 — 전용 unit은 v0.3 카탈로그로
+  배정해 그림을 유지한다. 대신 a-2 / a-5는 `revision_mismatch` 72 unit(test)이 E5-hard로 들어온다.
 
 - **분할**: 난이도별 test subset을 `experiment_tags`(`E5-easy` … `E5-extreme`)로 표시한다. 바꿔치기 불량
-  (`wrong_label` / `wrong_product_label`)은 전부 (요구, 실제) 쌍의 구간 태그를 받는다. 무작위 바꿔치기로는
+  (`wrong_label` / `wrong_product_label` / `revision_mismatch`)은 전부 (요구, 실제) 쌍의 구간 태그를 받는다. 무작위 바꿔치기로는
   Extreme(1쌍)이 거의 생기지 않으므로 **구간마다 전용 unit 72개를 test에 추가**한다 (escape 0건이면 95% 상한 ≤ 5%).
   전용 unit은 모든 row에 `E5` 태그를 더 단다(Pilot v0.4~) — E1 범위에서 빼기 위해서다.
 - **지표**: 난이도별 Similar-label Confusion Rate(= 구간별 바꿔치기 불량의 DER, evaluation_protocol §3), modality ablation(visual only → +OCR → +Barcode → +Context).
 - **성공 기준**: Extreme 구간에서 visual only는 구별하지 못하고 OCR/Barcode를 더하면 구별한다 — 가설 검증형.
+  Hard 구간의 a-2 / a-5는 바코드가 같아 **OCR만** 가른다 — modality ablation에서 OCR의 기여를 바코드와 분리해 본다.
 
 ## E6 — Domain Shift
 
@@ -142,3 +152,4 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 | v1.2 | 2026-09-25 | Pilot에 synthetic defect 10종 추가(#34). E4 Pilot의 hold-out 유형은 `unknown_visual`(val에 없음, `is_known_defect=false`), 본 유형은 나머지 9종 |
 | v1.3 | 2026-09-25 | E5 구간 규칙 확정, Pilot에 구간별 전용 unit 72개(#35). Confusion Rate = 구간별 바꿔치기 DER |
 | v1.4 | 2026-10-27 | **평가 범위** 절 추가(ADR 0008, #69 T2): 시나리오별 unit 범위, E1은 미등록 라벨·hold-out 유형·E5 전용 unit 제외(결정 2). E5 전용 unit에 `E5` 태그(Pilot v0.4) |
+| v1.5 | 2026-10-27 | Pilot v0.4(#69 T5~T7·T9): 공통 규칙에 `pilot_dev`·test 봉인, 평가 범위에 `GEOM-boundary`·`OCR-confusable` 묶음과 E1·E4 제외, E5에 `revision_mismatch`와 OCR-only 쌍 a-2 / a-5, 구간별 쌍 수 갱신 |

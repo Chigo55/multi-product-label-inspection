@@ -19,3 +19,6 @@ E5 전용 unit(구간마다 72개, test에만)은 E1에서 뺀다. 넣으면 E1�
 MLflow 지표 이름에 시나리오 접두사가 붙는다(`e1_false_positive_rate_product` …, protocol §9).
 접두사 없는 전체 평가 지표는 더 기록하지 않는다 — Week 4 이전 run과 이름이 달라 직접 비교되지 않는다.
 범위가 빈 시나리오(public track의 E3·E4·E5)는 결과에 없다. 0%로 보고하지 않는다.
+
+Pilot v0.4(#69)에서 같은 이유로 덧붙인 unit 묶음이 늘었다 — 위치·각도 경계(`GEOM-boundary`)와 OCR 혼동 문자
+(`OCR-confusable`). 둘 다 E1·E4에서 빼고 각자의 범위로 따로 평가한다(접두사 `geom_boundary_`, `ocr_confusable_`).

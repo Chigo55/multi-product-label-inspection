@@ -67,10 +67,29 @@ def flat_metrics(metrics: dict[str, Any]) -> dict[str, float]:
 
 
 def flat_scenario_metrics(by_scenario: dict[str, dict[str, Any]]) -> dict[str, float]:
-    """`evaluate_scenarios()` 결과 → 시나리오 접두사를 붙인 이름 (`e1_defect_escape_rate` …, §9)."""
+    """`evaluate_scenarios()` 결과 → 범위 접두사를 붙인 이름 (`e1_defect_escape_rate`,
+    `geom_boundary_review_rate` …, §9)."""
     return {
-        f"{s.lower()}_{k}": v for s, m in by_scenario.items() for k, v in flat_metrics(m).items()
+        f"{s.lower().replace('-', '_')}_{k}": v
+        for s, m in by_scenario.items()
+        for k, v in flat_metrics(m).items()
     }
+
+
+def open_test(reg_entry: dict[str, Any], cfg: dict[str, Any]) -> dict[str, str]:
+    """봉인된 test(registry `test_sealed`)는 config `experiment.final_report: true`일 때만 연다 (#69 T9).
+
+    test를 보면서 방향을 정하면 test가 더 이상 test가 아니다. 분석은 같은 Recipe의 `pilot_dev`로 한다.
+    돌려주는 dict는 run 태그다 — 연 run에는 `test_opened=true`가 남는다.
+    """
+    if cfg["dataset"]["split"] != "test" or not reg_entry.get("test_sealed"):
+        return {}
+    if not cfg["experiment"].get("final_report"):
+        raise PermissionError(
+            f"{cfg['dataset']['name']} test는 봉인돼 있다 — 분석은 pilot_dev로, "
+            "최종 보고 run만 experiment.final_report: true"
+        )
+    return {"test_opened": "true"}
 
 
 def write_predictions(path: Path, rows: list[dict], preds: list[dict]) -> None:
