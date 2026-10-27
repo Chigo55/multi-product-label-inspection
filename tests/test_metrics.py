@@ -302,6 +302,38 @@ def test_similar_label_confusion_rate_empty_without_e5_tags() -> None:
     assert evaluate(rows, preds)["similar_label_confusion_rate"] == {}
 
 
+def test_effective_sample_size_pairs_and_identities() -> None:
+    """행 수가 아니라 쌍·아이덴티티 수가 일반화의 표본이다 (#69 T11). 쌍은 순서를 따지지 않는다."""
+    rows, preds = _rows_preds(
+        [
+            ("defect", OK, "CRITICAL"),  # b-3 → b-4 extreme, 새어 나감
+            ("defect", NG, "CRITICAL"),  # b-4 → b-3 extreme (같은 쌍)
+            ("defect", NG, "CRITICAL"),  # a-2 → a-5 hard
+            ("normal", OK, "none"),  # 미등록 u-1, OK로 나감
+            ("normal", NG, "none"),  # 미등록 u-1
+            ("normal", REVIEW, "none"),  # 미등록 u-2
+        ]
+    )
+    meta = [
+        ("b-3", "b-4", ["E5-extreme"], True),
+        ("b-4", "b-3", ["E5-extreme"], True),
+        ("a-5", "a-2", ["E5-hard"], True),
+        ("u-1", "u-1", [], False),
+        ("u-1", "u-1", [], False),
+        ("u-2", "u-2", [], False),
+    ]
+    for row, (expected, actual, tags, known) in zip(rows, meta, strict=True):
+        row |= {"expected_label_id": expected, "actual_label_id": actual}
+        row |= {"experiment_tags": tags, "is_known_label": known}
+    m = evaluate(rows, preds)
+    assert m["n_pairs"] == {"extreme": 1, "hard": 1}
+    by_pair = m["similar_label_confusion_rate_by_pair"]
+    assert {k: (v["k"], v["n"]) for k, v in by_pair.items()} == {"a-2/a-5": (0, 1), "b-3/b-4": (1, 2)}
+    assert m["n_identities"] == 2
+    by_label = m["unknown_label_ok_rate_by_label"]
+    assert {k: (v["k"], v["n"]) for k, v in by_label.items()} == {"u-1": (1, 2), "u-2": (0, 1)}
+
+
 # --- §4 Label / Product-level 집계 (ADR 0003) ---
 
 

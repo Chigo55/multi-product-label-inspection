@@ -1,4 +1,4 @@
-# Evaluation Protocol v1.3
+# Evaluation Protocol v1.4
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -93,6 +93,7 @@ positive = defect 기준.
 | **Unknown Forced Rate** | `is_known_label=false` 샘플을 **등록 라벨 id로 억지 분류**한 비율 (아래 경고의 별도 실패 유형) |
 | **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label` / `revision_mismatch`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
 | **Unknown Label OK Rate** | `is_known_label=false` row 중 판정이 `OK`인 비율 (`unknown_label_ok_rate`). **E3의 주 성공 기준**(0건 + 상한). 판정만 쓰므로 identity를 내지 않는 AD 모델에도 적용된다 |
+| 쌍별·아이덴티티별 분해 | `similar_label_confusion_rate_by_pair`(순서 없는 쌍 `a-2/a-5`별 DER), `n_pairs`(구간별 서로 다른 쌍 수), `unknown_label_ok_rate_by_label`(미등록 라벨별 OK 비율), `n_identities`(미등록 아이덴티티 수). §5 유효 표본 수 |
 | Open-set 상태 정확도 | `KNOWN_EXPECTED` / `KNOWN_WRONG` / `UNKNOWN` 3-class 정확도 (`open_set_accuracy`). 정답은 `is_known_label`과 `actual_label_id` vs `expected_label_id`, 예측은 `predicted_label_id` vs `expected_label_id`로 정한다. 어떤 틀린 라벨인지는 보지 않는다 |
 
 > **Unknown을 기존 class로 억지 분류한 경우는 단순 오분류가 아니라 별도 실패 유형으로 집계한다.**
@@ -184,6 +185,9 @@ Observed CDER:
 - 이항 비율 신뢰구간은 **Clopper-Pearson(exact) 양측 95%** 를 기본으로 한다. 분모가 0이면 지표는 정의되지 않는다(`null`).
 - escape가 0건인 경우 상한은 `1 − 0.025^(1/n)` ≈ `3.7/n`이다 (rule of three `3/n`은 단측 95%라 쓰지 않는다). → **"0 escape"는 n이 작으면 아무것도 증명하지 않는다.**
 - 랜덤성이 있는 실험(few-shot 샘플링 등)은 **최소 3 seed**, 평균 ± 표준편차로 보고한다.
+- **E3·E5는 행 수와 함께 아이덴티티 수·쌍 수를 보고한다** (#69 T11). 행 단위 Clopper–Pearson 구간은 "유사 라벨 일반"이
+  아니라 "이 쌍, 이 라벨"에 대한 구간이다 — Pilot의 E5-extreme은 75행이지만 쌍은 b-3/b-4 하나, E3는 40행이지만
+  미등록 아이덴티티는 u-1·u-2 둘이다. 쌍·아이덴티티별 분해(§3)를 함께 내고, 일반화 주장은 쌍 수가 받쳐 줄 때만 한다.
 
 ---
 
@@ -354,3 +358,4 @@ Camera acquisition
 | v1.1 | 2026-10-27 | §9.1 `barcode_result` 열 정의(두 디코더 합의, #69 T3·#66). 디코더 이름·버전은 param(`barcode_decoders`, `pyzbar_version`, `zbar_version`, `zxing_cpp_version`) — pyzbar는 래퍼라 실제 디코더 libzbar 버전을 따로 남긴다 |
 | v1.2 | 2026-10-27 | Pilot v0.4(#69 T5~T7): §3 Similar-label Confusion Rate의 바꿔치기에 `revision_mismatch` 포함(구 revision 라벨로 바꿔 붙인 것, E5-hard). §4 덧붙인 unit 묶음(`GEOM-boundary`, `OCR-confusable`)은 E1·E4에서 빼고 따로 평가, §9 접두사 `geom_boundary_` / `ocr_confusable_` |
 | v1.3 | 2026-10-27 | §6 r을 제품 검토 예산 R에서 역산(Pilot R=5%, #69 결정 3), risk–coverage 곡선과 AURC 정의(R 격자, E1 범위, 점마다 val 재calibration). §9 `e1_aurc`, `risk_coverage` artifact (#69 T10) |
+| v1.4 | 2026-10-27 | §3 쌍별·아이덴티티별 분해(`similar_label_confusion_rate_by_pair`, `unknown_label_ok_rate_by_label`, `n_pairs`, `n_identities`), §5 E3·E5는 아이덴티티·쌍 수를 함께 보고 (#69 T11) |

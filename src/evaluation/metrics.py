@@ -94,18 +94,29 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         raise ValueError(f"알 수 없는 decision: {bad}")
 
     # E3 주 기준: 미등록 라벨이 붙은 정상 row가 OK로 나간 비율. decision만 쓴다 (AD 모델에도 적용)
-    unknown_dec = [
-        d for r, d in zip(rows, decision, strict=True) if r.get("is_known_label") is False
-    ]
+    unknown: dict[str, list[str]] = defaultdict(list)
+    for r, d in zip(rows, decision, strict=True):
+        if r.get("is_known_label") is False:
+            unknown[str(r.get("actual_label_id"))].append(d)
+    unknown_dec = [d for ds in unknown.values() for d in ds]
+    # 행 수가 아니라 쌍·아이덴티티 수가 일반화의 표본이다 — 행 단위 CI는 "이 쌍, 이 라벨"에 대한 구간이다 (§5)
+    e5_rows, e5_dec = _e5_subset(rows, decision)
+    tiers = sorted({r["e5_tier"] for r in e5_rows})
 
     return {
         "review_policy": REVIEW_POLICY,
         **_decision_metrics(rows, decision, score),
         "defect_escape_rate_by_category": _der_by(rows, decision, "defect_category"),
         "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
-        "similar_label_confusion_rate": _der_by(*_e5_subset(rows, decision), "e5_tier"),
+        "similar_label_confusion_rate": _der_by(e5_rows, e5_dec, "e5_tier"),
+        "similar_label_confusion_rate_by_pair": _der_by(e5_rows, e5_dec, "e5_pair"),
+        "n_pairs": {t: len({r["e5_pair"] for r in e5_rows if r["e5_tier"] == t}) for t in tiers},
         **_identity(rows, [by_id[r["sample_id"]].get("predicted_label_id") for r in rows]),
         "unknown_label_ok_rate": rate(unknown_dec.count(OK), len(unknown_dec)),
+        "unknown_label_ok_rate_by_label": {
+            k: rate(v.count(OK), len(v)) for k, v in sorted(unknown.items())
+        },
+        "n_identities": len(unknown),
         "label_level": _decision_metrics(*_group(rows, decision, score, ("unit_id", "label_slot"))),
         "product_level": _decision_metrics(*_group(rows, decision, score, ("unit_id",))),
     }
@@ -253,14 +264,19 @@ def _open_set(row: dict[str, Any], label: str | None) -> str | None:
 def _e5_subset(
     rows: list[dict[str, Any]], decision: list[str]
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """`E5-<구간>` 태그가 달린 row만, 구간을 `e5_tier` 키로 붙여서 (protocol §3 Similar-label Confusion Rate)."""
+    """`E5-<구간>` 태그가 달린 row만, 구간(`e5_tier`)과 순서 없는 쌍(`e5_pair`)을 붙여서 (protocol §3)."""
     picked = [
-        (row | {"e5_tier": tag.removeprefix("E5-")}, dec)
+        (row | {"e5_tier": tag.removeprefix("E5-"), "e5_pair": _pair(row)}, dec)
         for row, dec in zip(rows, decision, strict=True)
         for tag in row.get("experiment_tags") or []
         if tag.startswith("E5-")
     ]
     return [r for r, _ in picked], [d for _, d in picked]
+
+
+def _pair(row: dict[str, Any]) -> str:
+    """(요구, 실제) 라벨을 순서 없이 — b-3→b-4와 b-4→b-3은 같은 쌍이다."""
+    return "/".join(sorted((str(row.get("expected_label_id")), str(row.get("actual_label_id")))))
 
 
 def _der_by(rows: list[dict[str, Any]], decision: list[str], key: str) -> dict[str, Any]:

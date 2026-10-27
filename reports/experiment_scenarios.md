@@ -1,4 +1,4 @@
-# Experiment Scenarios v1.6
+# Experiment Scenarios v1.7
 
 > 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-10-27 / 이슈: #31, #33, #34, #35, #69
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
@@ -131,6 +131,9 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
   Extreme(1쌍)이 거의 생기지 않으므로 **구간마다 전용 unit 72개를 test에 추가**한다 (escape 0건이면 95% 상한 ≤ 5%).
   전용 unit은 모든 row에 `E5` 태그를 더 단다(Pilot v0.4~) — E1 범위에서 빼기 위해서다.
 - **지표**: 난이도별 Similar-label Confusion Rate(= 구간별 바꿔치기 불량의 DER, evaluation_protocol §3), modality ablation(visual only → +OCR → +Barcode → +Context).
+  구간마다 **쌍 수(`n_pairs`)와 쌍별 분해**를 함께 보고한다(§5). Pilot은 Hard 5쌍·Extreme 1쌍이라 Extreme 결과는
+  "b-3/b-4에서는"이라고만 말할 수 있다.
+- **Main benchmark 쌍 수 목표** (Week 17): 구간마다 서로 다른 쌍 ≥ 5, E3 미등록 아이덴티티 ≥ 5 — 숫자는 `[시작 시 확정]`.
 - **성공 기준**: Extreme 구간에서 visual only는 구별하지 못하고 OCR/Barcode를 더하면 구별한다 — 가설 검증형.
   Hard 구간의 a-2 / a-5는 바코드가 같아 **OCR만** 가른다 — modality ablation에서 OCR의 기여를 바코드와 분리해 본다.
 
@@ -158,3 +161,4 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 | v1.4 | 2026-10-27 | **평가 범위** 절 추가(ADR 0008, #69 T2): 시나리오별 unit 범위, E1은 미등록 라벨·hold-out 유형·E5 전용 unit 제외(결정 2). E5 전용 unit에 `E5` 태그(Pilot v0.4) |
 | v1.5 | 2026-10-27 | Pilot v0.4(#69 T5~T7·T9): 공통 규칙에 `pilot_dev`·test 봉인, 평가 범위에 `GEOM-boundary`·`OCR-confusable` 묶음과 E1·E4 제외, E5에 `revision_mismatch`와 OCR-only 쌍 a-2 / a-5, 구간별 쌍 수 갱신. 덧붙인 unit 묶음은 Scenario의 보조 범위(RQ 표시) |
 | v1.6 | 2026-10-27 | E1에 제품 검토 예산 R=5%와 risk–coverage·AURC 비교 (#69 T10) |
+| v1.7 | 2026-10-27 | E5 쌍 수·쌍별 분해 보고, Main benchmark 구간별 쌍 수 목표(쌍 ≥ 5, E3 아이덴티티 ≥ 5, 시작 시 확정) (#69 T11) |
