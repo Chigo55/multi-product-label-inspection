@@ -267,7 +267,9 @@ def main() -> None:
     )
     e5 = metrics["E5"]["similar_label_confusion_rate"]
     print("E5     : " + "  ".join(f"{k} {pct(v)}" for k, v in e5.items()))
-    print(f"E5 쌍 수 {metrics['E5']['n_pairs']}  E3 미등록 아이덴티티 {metrics['E3']['n_identities']}")
+    print(
+        f"E5 쌍 수 {metrics['E5']['n_pairs']}  E3 미등록 아이덴티티 {metrics['E3']['n_identities']}"
+    )
     print(
         f"Latency: P50 {latency['latency_p50']:.3f} / P95 {latency['latency_p95']:.3f} ms"
         f"  (제품 {latency['latency_n']}회)"

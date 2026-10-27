@@ -71,6 +71,41 @@ def calibrate(
     return float(t_ok), float(t_ng)
 
 
+def normalize(
+    fit_rows: list[dict[str, Any]],
+    fit_scores: Sequence[float],
+    rows: list[dict[str, Any]],
+    scores: Sequence[float],
+    method: str = "zscore",
+    keys: tuple[str, ...] = ("product_id", "label_slot"),
+) -> list[float]:
+    """슬롯별 점수 정규화 (§6, #69 T12). 통계는 val 정상으로만 잡는다.
+
+    라벨 종류마다 정상 점수 분포가 달라 한 threshold로 묶으면 NG가 특정 슬롯에 몰린다. 슬롯별 분위수
+    threshold는 쓸 수 없다 — 슬롯당 val 정상이 약 170행이라 f=0.334%면 꼬리에 0.57건이다. 그래서 분포를
+    맞춘 뒤 제품별 공통 분위수 threshold(`calibrate`)를 쓴다.
+    - `zscore`: (s - 평균) / 표준편차
+    - `rank`: 그 슬롯 val 정상 중 s 이하인 비율 (경험 CDF)
+    """
+    if any(r["split"] != "val" for r in fit_rows):
+        raise ValueError("정규화 통계는 val에서만 잡는다 — test로 정하지 않는다 (§6)")
+    groups: dict[tuple, list[float]] = defaultdict(list)
+    for r, s in zip(fit_rows, fit_scores, strict=True):
+        if r["normal_or_defect"] == "normal":
+            groups[tuple(r.get(k) for k in keys)].append(s)
+    stats = {g: np.sort(v) for g, v in groups.items()}
+    out = []
+    for r, s in zip(rows, scores, strict=True):
+        v = stats[tuple(r.get(k) for k in keys)]
+        if method == "zscore":
+            out.append(float((s - v.mean()) / (v.std() or 1.0)))
+        elif method == "rank":
+            out.append(float(np.searchsorted(v, s, side="right") / len(v)))
+        else:
+            raise ValueError(f"알 수 없는 정규화: {method!r}")
+    return out
+
+
 def rate(k: int, n: int) -> dict[str, Any]:
     """k/n 과 Clopper-Pearson 95% 구간. n == 0이면 정의되지 않으므로 None."""
     if n == 0:
@@ -99,6 +134,13 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         if r.get("is_known_label") is False:
             unknown[str(r.get("actual_label_id"))].append(d)
     unknown_dec = [d for ds in unknown.values() for d in ds]
+    # 슬롯별 FPR — 한 threshold로 묶으면 NG가 특정 슬롯에 몰린다(§6 정규화). 편차 = 최댓값 - 최솟값
+    by_slot: dict[str, list[str]] = defaultdict(list)
+    for r, d in zip(rows, decision, strict=True):
+        if r["normal_or_defect"] == "normal":
+            by_slot[f"{r.get('product_id')}.{r.get('label_slot')}"].append(d)
+    slot_fpr = {k: rate(v.count(NG), len(v)) for k, v in sorted(by_slot.items())}
+    slot_values = [x["value"] for x in slot_fpr.values()]
     # 행 수가 아니라 쌍·아이덴티티 수가 일반화의 표본이다 — 행 단위 CI는 "이 쌍, 이 라벨"에 대한 구간이다 (§5)
     e5_rows, e5_dec = _e5_subset(rows, decision)
     tiers = sorted({r["e5_tier"] for r in e5_rows})
@@ -108,6 +150,8 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         **_decision_metrics(rows, decision, score),
         "defect_escape_rate_by_category": _der_by(rows, decision, "defect_category"),
         "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
+        "false_positive_rate_by_slot": slot_fpr,
+        "slot_fpr_spread": max(slot_values) - min(slot_values) if len(slot_values) > 1 else None,
         "similar_label_confusion_rate": _der_by(e5_rows, e5_dec, "e5_tier"),
         "similar_label_confusion_rate_by_pair": _der_by(e5_rows, e5_dec, "e5_pair"),
         "n_pairs": {t: len({r["e5_pair"] for r in e5_rows if r["e5_tier"] == t}) for t in tiers},

@@ -17,6 +17,7 @@ from src.evaluation.metrics import (
     decide,
     evaluate,
     label_rate,
+    normalize,
     rate,
     risk_coverage,
 )
@@ -328,7 +329,10 @@ def test_effective_sample_size_pairs_and_identities() -> None:
     m = evaluate(rows, preds)
     assert m["n_pairs"] == {"extreme": 1, "hard": 1}
     by_pair = m["similar_label_confusion_rate_by_pair"]
-    assert {k: (v["k"], v["n"]) for k, v in by_pair.items()} == {"a-2/a-5": (0, 1), "b-3/b-4": (1, 2)}
+    assert {k: (v["k"], v["n"]) for k, v in by_pair.items()} == {
+        "a-2/a-5": (0, 1),
+        "b-3/b-4": (1, 2),
+    }
     assert m["n_identities"] == 2
     by_label = m["unknown_label_ok_rate_by_label"]
     assert {k: (v["k"], v["n"]) for k, v in by_label.items()} == {"u-1": (1, 2), "u-2": (0, 1)}
@@ -487,3 +491,53 @@ def test_risk_coverage_points_and_area() -> None:
         (1.0, 0.0, 0.0),
     ]
     assert rc["aurc"] == pytest.approx(0.5)
+
+
+# --- §6 슬롯별 점수 정규화 (#69 T12) ---
+
+
+def _two_slots(split: str, n: int, rng: np.random.Generator) -> tuple[list[dict], list[float]]:
+    """정상만. 슬롯 B는 정상 점수 분포가 3만큼 높다 — 실제 AD 모델에서 라벨 종류마다 생기는 차이."""
+    rows, scores = [], []
+    for slot, shift in (("A", 0.0), ("B", 3.0)):
+        for i in range(n):
+            rows.append(
+                {
+                    "sample_id": f"{split}/{slot}/{i}",
+                    "unit_id": f"{split}/{slot}/{i}",
+                    "product_id": "P",
+                }
+                | {"label_slot": slot, "split": split, "normal_or_defect": "normal"}
+                | {"defect_severity": "none"}
+            )
+            scores.append(float(rng.normal(shift, 1.0)))
+    return rows, scores
+
+
+@pytest.mark.parametrize("method", ["zscore", "rank"])
+def test_slot_normalization_evens_out_slot_fpr(method: str) -> None:
+    """한 threshold로 묶으면 NG가 점수 높은 슬롯에 몰린다. 정규화하면 슬롯별 FPR 편차가 준다."""
+    rng = np.random.default_rng(0)
+    val, val_scores = _two_slots("val", 400, rng)
+    test, test_scores = _two_slots("test", 400, rng)
+
+    def spread(v: list[float], t: list[float]) -> float:
+        ok, ng = calibrate(val, v, 0.05, 0.10)
+        preds = [
+            {"sample_id": r["sample_id"], "decision": decide(s, ok, ng), "anomaly_score": s}
+            for r, s in zip(test, t, strict=True)
+        ]
+        return evaluate(test, preds)["slot_fpr_spread"]
+
+    raw = spread(val_scores, test_scores)
+    normed = spread(
+        normalize(val, val_scores, val, val_scores, method),
+        normalize(val, val_scores, test, test_scores, method),
+    )
+    assert raw > 0.05 and normed < raw / 3
+
+
+def test_normalize_fits_on_val_normal_only() -> None:
+    rows = [{"split": "test", "normal_or_defect": "normal", "product_id": "P", "label_slot": "A"}]
+    with pytest.raises(ValueError, match="val"):
+        normalize(rows, [0.0], rows, [0.0])
