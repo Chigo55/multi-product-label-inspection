@@ -45,11 +45,12 @@ E1 범위(test, `pilot` v0.4): 1020 unit — 정상 300 / 불량 720 (유형당 
 6자 Code128이 256px ROI(모듈당 약 2px)에서 읽히는지, 판독 규칙을 어느 디코더 조합으로 만들지 정했다.
 
 - 실행: `uv run experiments/week05_barcode_check.py` (config `configs/week05_barcode_check.yaml`, RQ3 / E5)
-- run: `311a55b22175473a97e2bc9dff2fa118` (`citable=false`, git `3055f0a`, `git_dirty=false`)
-- 데이터: **Pilot v0.4** val, 바코드가 있는 라벨만 — 정상 1235행 + `barcode_mismatch` 24행.
-  (첫 run `ea7e97f0…`은 v0.3 metadata에 `dataset_version=0.4`가 잘못 남아 태그 `actual_metadata_version=0.3`을
-  달고 대체했다. 이후 스크립트는 `check_built_version`으로 생성 version을 registry와 대조한다. v0.3에서도
-  정상 0/1007, 검출 23/24로 결론은 같았다.)
+- run: `56870c2678494f5898ed44e6fade318c` (`citable=false`, git `734b1f9`, `git_dirty=false`)
+- 데이터: **`pilot_dev` v0.4** val(규칙 7 — Week 5~16 보고는 `pilot_dev`), 바코드가 있는 라벨만 — 정상 1241행 +
+  `barcode_mismatch` 24행.
+- 이전 run: `pilot` v0.4 val `311a55b2…` — 정상 0/1235, 검출 23/24, REVIEW 2.6%로 결론이 같다. 첫 run `ea7e97f0…`은
+  v0.3 metadata에 `dataset_version=0.4`가 잘못 남아 태그 `actual_metadata_version=0.3`을 달고 대체했다(이후 스크립트는
+  `check_built_version`으로 생성 version을 registry와 대조한다).
 - 디코더: pyzbar 0.1.9 + **libzbar 0.10**(Windows wheel 동봉본), zxing-cpp 3.1.1 (원본 / 2배 bicubic 업스케일).
   Linux `libzbar0`는 0.23이라 판독률이 다를 수 있다 — 이후 run은 `zbar_version` param을 남긴다.
 
@@ -59,38 +60,38 @@ E1 범위(test, `pilot` v0.4): 1020 unit — 정상 300 / 불량 720 (유형당 
 
 | 대상 | layout | 디코더 | n | 판독 | 오판독 |
 |---|---|---|---:|---:|---:|
-| 정상 | plate | pyzbar | 640 | 636 (99.4%) | 0 |
-| 정상 | plate | zxing | 640 | 460 (71.9%) | 1 |
-| 정상 | plate | zxing_x2 | 640 | 626 (97.8%) | 1 |
-| 정상 | tag | pyzbar | 595 | 587 (98.7%) | 0 |
-| 정상 | tag | zxing | 595 | 582 (97.8%) | 0 |
-| 정상 | tag | zxing_x2 | 595 | 584 (98.2%) | 0 |
-| barcode_mismatch | plate | pyzbar | 9 | 8 (88.9%) | 0 |
-| barcode_mismatch | plate | zxing | 9 | 5 (55.6%) | 0 |
-| barcode_mismatch | plate | zxing_x2 | 9 | 9 (100.0%) | 0 |
-| barcode_mismatch | tag | pyzbar | 15 | 15 (100.0%) | 0 |
-| barcode_mismatch | tag | zxing | 15 | 14 (93.3%) | 0 |
-| barcode_mismatch | tag | zxing_x2 | 15 | 15 (100.0%) | 0 |
+| 정상 | plate | pyzbar | 636 | 636 (100.0%) | 0 |
+| 정상 | plate | zxing | 636 | 442 (69.5%) | 1 |
+| 정상 | plate | zxing_x2 | 636 | 625 (98.3%) | 2 |
+| 정상 | tag | pyzbar | 605 | 597 (98.7%) | 0 |
+| 정상 | tag | zxing | 605 | 590 (97.5%) | 0 |
+| 정상 | tag | zxing_x2 | 605 | 602 (99.5%) | 0 |
+| barcode_mismatch | plate | pyzbar | 13 | 13 (100.0%) | 0 |
+| barcode_mismatch | plate | zxing | 13 | 11 (84.6%) | 0 |
+| barcode_mismatch | plate | zxing_x2 | 13 | 13 (100.0%) | 0 |
+| barcode_mismatch | tag | pyzbar | 11 | 11 (100.0%) | 0 |
+| barcode_mismatch | tag | zxing | 11 | 11 (100.0%) | 0 |
+| barcode_mismatch | tag | zxing_x2 | 11 | 11 (100.0%) | 0 |
 
-zxing-cpp 원본은 plate에서 72%만 읽고, `XA1001`을 `XA1011`로 잘못 읽은 1건이 있다(`A/val/00324`). 업스케일하면
-98%로 오르지만 다른 1건에서 값을 둘(`XA0228|XA1001`) 읽는다. 단일 디코더로 NG를 내면 이런 건이 과검이 된다.
+zxing-cpp 원본은 plate에서 70%만 읽고 오판독이 1건 있다(`pilot` val에서는 `XA1001`→`XA1011`). 업스케일하면
+98%로 오르지만 값을 둘 읽는 건이 2건 생긴다(`pilot` val의 예: `XA0228|XA1001`). 단일 디코더로 NG를 내면 이런 건이 과검이 된다.
 
 ### 합의 규칙 (두 디코더가 같은 값 하나를 읽어야 판독 성공)
 
 | 대상 | 디코더 쌍 | MATCH | MISMATCH | CONFLICT | UNREADABLE |
 |---|---|---:|---:|---:|---:|
-| 정상 | pyzbar+zxing | 1033 | 0 | 1 | 201 |
-| 정상 | **pyzbar+zxing_x2** | **1203** | **0** | 1 | 31 |
-| 정상 | zxing+zxing_x2 | 1022 | 0 | 2 | 211 |
-| barcode_mismatch | pyzbar+zxing | 0 | 19 | 0 | 5 |
-| barcode_mismatch | **pyzbar+zxing_x2** | 0 | **23** | 0 | 1 |
-| barcode_mismatch | zxing+zxing_x2 | 0 | 19 | 0 | 5 |
+| 정상 | pyzbar+zxing | 1023 | 0 | 1 | 217 |
+| 정상 | **pyzbar+zxing_x2** | **1219** | **0** | 2 | 20 |
+| 정상 | zxing+zxing_x2 | 1024 | 0 | 2 | 215 |
+| barcode_mismatch | pyzbar+zxing | 0 | 22 | 0 | 2 |
+| barcode_mismatch | **pyzbar+zxing_x2** | 0 | **24** | 0 | 0 |
+| barcode_mismatch | zxing+zxing_x2 | 0 | 22 | 0 | 2 |
 
 **채택: pyzbar + zxing-cpp 2배** (`src/models/barcode.py` `PAIR`).
 
-- val 정상 오판독(MISMATCH → 과검) **0 / 1235 (95% CI 0.00%~0.30%)**.
-- val `barcode_mismatch` 검출 23 / 24 = 95.8% (95% CI 78.9%~99.9%). 놓친 1건은 UNREADABLE → REVIEW라 escape가 아니다.
-- 대가: 정상 바코드 row의 32 / 1235 = 2.6% (95% CI 1.8%~3.6%, UNREADABLE 31 + CONFLICT 1)가 REVIEW로 간다. 바코드 라벨이 있는 제품에서는
+- val 정상 오판독(MISMATCH → 과검) **0 / 1241 (95% CI 0.00%~0.30%)**.
+- val `barcode_mismatch` 검출 24 / 24 (95% CI 85.8%~100%). `pilot` val에서는 23/24였고 놓친 1건은 UNREADABLE → REVIEW였다.
+- 대가: 정상 바코드 row의 22 / 1241 = 1.8% (95% CI 1.1%~2.7%, UNREADABLE 20 + CONFLICT 2)가 REVIEW로 간다. 바코드 라벨이 있는 제품에서는
   Product-level Review Rate에 그대로 더해진다 — 제품 검토 예산 R(#69 T10)을 정할 때 이 몫을 뺀다.
 
 ### 남은 것
