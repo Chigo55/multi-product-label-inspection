@@ -92,8 +92,14 @@ def rng_for(sample_id: str) -> np.random.Generator:
 
 @lru_cache(maxsize=64)
 def _font(kind: str, size: int) -> ImageFont.FreeTypeFont:
-    """matplotlib이 동봉한 DejaVu를 쓴다 — 폰트 파일을 커밋하지 않아도 어디서나 같은 그림이 나온다."""
-    return ImageFont.truetype(str(FONT_DIR / FONT_FILES[kind]), size)
+    """matplotlib이 동봉한 DejaVu를 쓴다 — 폰트 파일을 커밋하지 않아도 어디서나 같은 그림이 나온다.
+
+    배치 엔진은 BASIC으로 고정한다. Pillow는 시스템에 libfribidi가 있으면 RAQM으로 바꾸는데(Linux에서
+    `apt install libzbar0`가 ImageMagick 의존성으로 함께 깐다), 그러면 글자 위치가 달라져 같은 sample_id가
+    다른 그림이 된다 (#69 리뷰, 2026-10-27). 기존 Pilot은 BASIC(Windows)으로 생성됐다.
+    """
+    path = str(FONT_DIR / FONT_FILES[kind])
+    return ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.BASIC)
 
 
 @lru_cache(maxsize=32)
