@@ -118,6 +118,8 @@ def barcode_strip(value: str, size: tuple[int, int]) -> Image.Image:
 # Layout — 라벨 한 장을 그린다. 좌표는 domain spec이 아니라 그리는 방법이라 Recipe가 아닌 여기 있다.
 # ------------------------------------------------------------
 LABEL_SIZE = {"plate": (216, 136), "tag": (216, 128), "warning": (192, 136), "food": (208, 108)}
+# 바코드 자리 (x, y, w, h) px. Pilot-Real 인쇄본은 이 자리에 바코드를 인쇄 해상도로 다시 그린다 (#69 T14)
+BARCODE_BOX = {"plate": (10, 98, 196, 30), "tag": (10, 38, 196, 78)}
 
 
 def _blank(
@@ -145,11 +147,11 @@ def render_label(spec: dict[str, Any]) -> Image.Image:
             text.items(), ((10, 22), (44, 18), (72, 18)), strict=False
         ):
             draw.text((12, y), f"{key} {value}", font=_font(font_kind, size), fill=pal["fg"])
-        _paste_barcode(img, spec["barcode"], (10, 98, 196, 30))
+        _paste_barcode(img, spec["barcode"], BARCODE_BOX["plate"])
     elif layout == "tag":  # 바코드 태그: 제품군 한 줄 + 큰 바코드
         title = next(iter(text.values()))
         draw.text((14, 8), title, font=_font(font_kind, 20), fill=pal["fg"])
-        _paste_barcode(img, spec["barcode"], (10, 38, 196, 78))
+        _paste_barcode(img, spec["barcode"], BARCODE_BOX["tag"])
     elif layout == "warning":  # 경고 라벨: 큰 제목 + 본문. 바코드 없음
         values = list(text.values())
         draw.text((16, 22), values[0], font=_font(font_kind, 32), fill=pal["fg"])

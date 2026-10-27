@@ -34,6 +34,7 @@ uv run experiments/build_pilot.py pilot_dev   # 같은 Recipe, 그림만 다른 
 uv run experiments/week02_pipeline_check.py   # dummy 예측 → 평가 → MLflow (레일 점검)
 uv run experiments/week04_gate_check.py   # Pilot에서 3-level·identity 지표 + 재현성 + §9 보고 세트 (Month 1 Gate)
 uv run experiments/week05_barcode_check.py # val 바코드 판독률·오판독, 디코더 합의 규칙 점검
+uv run experiments/export_pilot_real_labels.py # Pilot-Real 인쇄용 라벨 (datasets/pilot_real.md)
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts # 메인 체크아웃에서
 ```
 

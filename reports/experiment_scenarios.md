@@ -1,4 +1,4 @@
-# Experiment Scenarios v1.7
+# Experiment Scenarios v1.8
 
 > 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-10-27 / 이슈: #31, #33, #34, #35, #69
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
@@ -144,6 +144,8 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 - **지표**: 요인별 DER·FPR과 in-domain 대비 변화량. Review Rate 변화.
 - **성공 기준**: shift 조건에서 늘어난 불량이 `OK`로 새지 않고 `REVIEW`로 흡수된다 — DER 증가가 in-domain
   신뢰구간 안이고 Review Rate 증가는 상한 이내. 상한 숫자 `[시작 시 확정, Week 17]`.
+- **Pilot-Real** (#69 T14, Week 16 촬영): 같은 Recipe의 라벨을 인쇄·부착·촬영한 실물 세트(`E6-real`, 60 unit).
+  렌더 대비 실물의 DER·FPR·Review Rate 차이를 보조 결과로 낸다. 프로토콜 `datasets/pilot_real.md`.
 - **주의**: 조명·배경·반사는 `experiment_tags`로 표시한다 (schema §4.4). 모든 test LOT은 이미 새 LOT이므로
   `E6-lot`은 큰 LOT 변화를 뜻한다.
 
@@ -162,3 +164,4 @@ row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이�
 | v1.5 | 2026-10-27 | Pilot v0.4(#69 T5~T7·T9): 공통 규칙에 `pilot_dev`·test 봉인, 평가 범위에 `GEOM-boundary`·`OCR-confusable` 묶음과 E1·E4 제외, E5에 `revision_mismatch`와 OCR-only 쌍 a-2 / a-5, 구간별 쌍 수 갱신. 덧붙인 unit 묶음은 Scenario의 보조 범위(RQ 표시) |
 | v1.6 | 2026-10-27 | E1에 제품 검토 예산 R=5%와 risk–coverage·AURC 비교 (#69 T10) |
 | v1.7 | 2026-10-27 | E5 쌍 수·쌍별 분해 보고, Main benchmark 구간별 쌍 수 목표(쌍 ≥ 5, E3 아이덴티티 ≥ 5, 시작 시 확정) (#69 T11) |
+| v1.8 | 2026-10-27 | E6에 Pilot-Real 보조 결과(`E6-real`, 프로토콜 `datasets/pilot_real.md`) (#69 T14, 결정 6) |
