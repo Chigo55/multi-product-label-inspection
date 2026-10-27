@@ -3,10 +3,12 @@
     uv run experiments/build_pilot.py            # pilot
     uv run experiments/build_pilot.py pilot_dev  # 같은 Recipe, 그림만 다른 분석용 세트 (#69 T9)
 
-`datasets/registry.yaml`의 `pilot` 항목이 가리키는 root에 이미지를 쓰고, **검증기 오류가 0건일
-때만** metadata를 쓴다. 이미지도 metadata도 커밋되지 않는다 — 이 스크립트로 재생성한다.
+`datasets/registry.yaml`의 해당 항목(`pilot` / `pilot_dev`)이 가리키는 root에 이미지를 쓰고,
+**검증기 오류가 0건일 때만** metadata를 쓴다. 옆에 `nuisance.jsonl`과 생성 version을 남긴다.
+이미지도 metadata도 커밋되지 않는다 — 이 스크립트로 재생성한다.
 
-생성 결과는 Recipe와 `src/utils/pilot.py`만으로 결정된다(샘플별 seed = sha256(sample_id)).
+생성 결과는 Recipe, `src/utils/pilot.py`, registry 항목의 `namespace`·`lots`로 결정된다
+(샘플별 seed = sha256(sample_id), sample_id는 namespace로 시작한다).
 그래서 registry의 `sha256`은 원본 아카이브 대신 **Recipe 파일 해시**(줄바꿈 LF 기준)다. 해시가 달라지면
 데이터가 달라진 것이므로 `version`을 올리라고 여기서 막는다.
 

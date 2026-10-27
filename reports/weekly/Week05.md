@@ -20,7 +20,9 @@ Raspberry Pi 측정과 Human study는 선택 항목으로 내렸다. 표는 READ
 ## 선행 작업 — Pilot v0.4 (#69 T2·T5~T9)
 
 Week 5 baseline은 v0.4 위에서 돌린다. **v0.3 unit은 그대로이고 새 unit은 뒤에 붙었다** — v0.3 생성기로 다시 만든
-8816 row와 metadata·이미지 바이트 차이 0 (`tests/test_pilot.py::test_v03_units_are_unchanged`가 축소판으로 고정).
+8816 row와 metadata·이미지 바이트 차이 0. 테스트로는 두 가지를 고정한다 — v0.3 생성기에서 계산한 render 픽셀
+해시(`test_render_matches_v03_generator`, 난수 순서)와 축소판에서 v0.4 추가분이 v0.3 unit을 흔들지 않는지
+(`test_v03_units_are_unchanged`, 배정).
 
 | 추가 | 내용 (test 기준) | 평가 범위 |
 |---|---|---|

@@ -33,6 +33,7 @@ from src.utils.tracking import (
     flat_scenario_metrics,
     git_commit,
     git_is_dirty,
+    open_test,
     start_experiment,
     write_predictions,
 )
@@ -73,6 +74,9 @@ def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     ds = cfg["dataset"]
     reg = load_yaml(REGISTRY_PATH)[ds["name"]]
+    test_tags = open_test(
+        reg, cfg
+    )  # 봉인된 test(registry test_sealed)는 final_report일 때만 (#69 T9)
 
     rows = [
         r for r in read_jsonl(SHARED_ROOT / reg["metadata"]) if r["product_id"] == ds["category"]
@@ -106,7 +110,7 @@ def main() -> None:
 
     start_experiment(cfg["tracking"]["experiment_name"])
     with mlflow.start_run(run_name=f"dummy-{ds['category']}") as run:
-        mlflow.set_tags({"purpose": "pipeline_check", "citable": "false"})
+        mlflow.set_tags({"purpose": "pipeline_check", "citable": "false"} | test_tags)
         mlflow.log_params(
             {
                 "git_commit": git_commit(),

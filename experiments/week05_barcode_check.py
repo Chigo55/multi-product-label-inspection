@@ -27,7 +27,7 @@ from src.models.barcode import DECODERS, MISMATCH, PAIR, RESULTS, barcode_result
 from src.utils.metadata import read_jsonl
 from src.utils.paths import SHARED_ROOT
 from src.utils.pilot import check_built_version
-from src.utils.tracking import flat_metrics, git_commit, git_is_dirty, start_experiment
+from src.utils.tracking import flat_metrics, git_commit, git_is_dirty, open_test, start_experiment
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week05_barcode_check.yaml"
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
@@ -40,6 +40,7 @@ def load_yaml(path: Path) -> dict:
 def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     reg = load_yaml(REGISTRY_PATH)[cfg["dataset"]["name"]]
+    test_tags = open_test(reg, cfg)  # 봉인된 pilot test는 final_report일 때만 (#69 T9)
     layout = {k: v["layout"] for k, v in load_yaml(REPO_ROOT / reg["recipe"])["labels"].items()}
     root = SHARED_ROOT / reg["root"]
     check_built_version(root, reg["version"])
@@ -83,7 +84,7 @@ def main() -> None:
 
     start_experiment(cfg["tracking"]["experiment_name"])
     with mlflow.start_run(run_name="barcode-val") as run_info:
-        mlflow.set_tags({"purpose": "barcode_check", "citable": "false"})
+        mlflow.set_tags({"purpose": "barcode_check", "citable": "false"} | test_tags)
         mlflow.log_params(
             {
                 "git_commit": git_commit(),

@@ -12,7 +12,7 @@ experiment:
   notes: "val 정상 전체 + val barcode_mismatch에서 디코더 3조건의 레이아웃별 판독률·오판독, 합의 규칙 결과"
 
 dataset:
-  name: pilot
+  name: pilot_dev                # Week 5~16 보고 수치는 pilot_dev (#69 규칙 7)
   split: val                     # threshold와 같은 규칙: 규칙은 val에서 정한다. test는 보지 않는다
 
 tracking:

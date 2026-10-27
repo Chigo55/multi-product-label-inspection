@@ -112,6 +112,17 @@ Onboarding된 라벨인가 아닌가. Unknown을 기존 Label Identity로 억지
 실험 시나리오 `E1`~`E6`. 모든 실험은 자신이 속한 Scenario를 선언한다.
 _Avoid_: 실험 종류, experiment type
 
+**덧붙인 unit (Dedicated unit)**:
+특정 질문을 위해 test에 덧붙인 Product Unit 묶음 — E5 전용(`E5` 태그), 위치·각도 경계(`GEOM-boundary`),
+OCR 혼동 문자(`OCR-confusable`). 불량 구성을 쏠리게 하므로 E1·E4 평가 범위에서 빼고 Scenario의 보조
+범위로 따로 본다 (`docs/adr/0008`).
+_Avoid_: 스트레스 데이터, hard set
+
+**pilot_dev**:
+`pilot`과 같은 Recipe·생성기로 seed 네임스페이스와 LOT만 다르게 만든 분석용 Pilot. 실패 분석과 Week 5~16
+보고는 여기서 하고, `pilot`의 test는 최종 보고 전까지 **봉인**한다(registry `test_sealed`).
+_Avoid_: dev set(단독으로), validation set
+
 **Research Question**:
 연구 질문 `RQ1`~`RQ6`. 어떤 RQ에도 연결되지 않는 실험은 하지 않는다.
 _Avoid_: 연구 주제, 가설

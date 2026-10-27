@@ -194,7 +194,7 @@ def apply_nuisance(
 ) -> tuple[Image.Image, dict[str, Any]]:
     """원근 → 조명 → blur → 노이즈. 세기를 키우면 E6 shift subset이 된다.
 
-    실제로 뽑힌 값도 돌려준다(nuisance sidecar, #69 T8). **난수 소비 순서는 바꾸지 않는다** —
+    실제로 쓴 값(뽑힌 warp·조명 각도·blur 반경과 세기 설정 gain·noise)도 돌려준다(nuisance sidecar, #69 T8). **난수 소비 순서는 바꾸지 않는다** —
     바꾸면 기존 이미지가 전부 달라진다.
     """
     s = NUISANCE | (strength or {})
@@ -334,6 +334,7 @@ def _v03_catalog(
     """`since`가 없는 라벨과 그 라벨만으로 된 revision. v0.3 unit은 이것으로 배정해야 그림이 그대로다 —
     새 라벨이 들어오면 revision 순환·무작위 바꿔치기 후보·E5 쌍 배정이 전부 달라진다 (#69 공통 규칙 4).
     """
+    # ponytail: `since` 값은 보지 않고 키만 본다 — v0.5 라벨이 생기면 버전별로 나눠 배정한다
     old = {k: v for k, v in labels.items() if "since" not in v}
     return old, {
         p: v
@@ -413,7 +414,11 @@ def _unit_plan(
 
 
 def _v04_plan(
-    product: dict[str, Any], labels: dict[str, Any], cfg: dict[str, Any], seq: int, share: dict
+    product: dict[str, Any],
+    labels: dict[str, Any],
+    cfg: dict[str, Any],
+    seq: int,
+    share: dict[str, int],
 ) -> list[Plan]:
     """v0.4 unit (#69 T5~T7). v0.3 unit 전부의 **뒤에** 붙인다. `share`는 이 제품 몫의 unit 수다.
 
@@ -431,7 +436,11 @@ def _v04_plan(
     plan: list[Plan] = []
 
     def add(
-        split: str, revision: str, defect_type: str | None = None, forced=None, tag=None
+        split: str,
+        revision: str,
+        defect_type: str | None = None,
+        forced: tuple[str, str] | None = None,
+        tag: str | None = None,
     ) -> None:
         nonlocal seq
         lots = cfg["lots"]["test"] if split == "test" else cfg["lots"]["fit"]

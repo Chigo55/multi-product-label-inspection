@@ -188,6 +188,30 @@ def test_render_is_deterministic_per_sample_id(recipe: dict[str, Any]) -> None:
     assert once() != other, "sample_id가 달라도 같은 그림이면 정상 변이가 없는 것이다"
 
 
+# Pilot v0.3 생성기(b977354)에서 계산한 render_roi 픽셀 sha256 — Windows·Linux가 같은 값이다.
+# 새 코드끼리 비교하는 test_v03_units_are_unchanged는 난수 소비 순서가 바뀐 것을 못 잡는다(양쪽이 같이 바뀐다).
+V03_RENDER_SHA256 = (
+    "bbfb8e36a582ed6e5ab932107396bd58a55214ea72b3d46abbe7cdde29d58d9a",
+    "05cc5d2493bbed8fe822fd2e14573f7ff0a43fb0d4e7eef35e9fdc48293a3672",
+    "ad564b85275c0ae179150ad77c588b21f38898a4572bf2af5de8434abe7a78dd",
+)
+
+
+def test_render_matches_v03_generator(recipe: dict[str, Any]) -> None:
+    """그림 생성(난수 소비 순서 포함)이 v0.3과 바이트까지 같다 (#69 공통 규칙 4, T8)."""
+    labels = recipe["labels"]
+    cases = [
+        (labels["a-1"], "brushed_metal", (0.3, -0.2), 1.0, "custom_pilot/A/test/00000/slot-1"),
+        (labels["b-4"], "plastic_dark", (-1.1, 0.4), -2.5, "custom_pilot/B/val/00321/slot-3"),
+        (None, "carton", (0.0, 0.0), 0.0, "custom_pilot/C/test/00999/slot-4"),
+    ]
+    got = tuple(
+        hashlib.sha256(render_roi(s, b, (256, 256), o, t, rng_for(i))[0].tobytes()).hexdigest()
+        for s, b, o, t, i in cases
+    )
+    assert got == V03_RENDER_SHA256
+
+
 def test_registry_hash_matches_recipe() -> None:
     """registry의 sha256은 Recipe 파일 해시다 (원본 아카이브가 없으므로, 줄바꿈 LF 기준). 어긋나면 build가 막는다."""
     entry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))["pilot"]
