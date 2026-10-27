@@ -40,8 +40,13 @@
 | [AnomalyDINO](https://arxiv.org/abs/2405.14529) | 2025 | WACV | DINOv2 기반 **training-free few-shot** AD | ● | ● | ○ | ✕ | ✕ | ○ | [dammsi/AnomalyDINO](https://github.com/dammsi/AnomalyDINO) (공식) | Apache-2.0 | ○ | **RQ4 신규 라벨 onboarding과 직결.** backbone DINOv2(Apache-2.0) |
 | [Dinomaly](https://arxiv.org/abs/2405.14325) | 2025 | CVPR | Multi-class unsupervised AD (unified) | ● | ○ | ● | ✕ | ○ | ○ | [guojiajeremy/Dinomaly](https://github.com/guojiajeremy/Dinomaly) (공식) | Apache-2.0 | ? | **Architecture D 핵심 baseline.** backbone DINOv2(Apache-2.0). 확장판 Dinomaly2 별도 레포 |
 | [INP-Former](https://arxiv.org/abs/2503.02424) | 2025 | CVPR | Intrinsic normal prototype / universal AD | ● | ● | ● | ✕ | ○ | ○ | [luow23/INP-Former](https://github.com/luow23/INP-Former) (공식) | MIT | ? | Dinomaly와 함께 unified 비교군. 배포된 학습 weights는 MVTec/VisA/Real-IAD로 학습 → 데이터셋 조건을 따른다 |
-| [OpenMax](https://arxiv.org/abs/1511.06233) | 2016 | CVPR | Open-set recognition의 기초 | ✕ | ✕ | ● | ● | ✕ | ✕ | [abhijitbendale/OSDN](https://github.com/abhijitbendale/OSDN) (공식) | BSD-3-Clause ⚠️ 번들 libMR은 **비상업 전용** | ● | **Unknown label 거부의 출발점 (RQ1/RQ3).** Weibull fitting을 libMR 대신 직접 구현해야 한다 |
+| [OpenMax](https://arxiv.org/abs/1511.06233) | 2016 | CVPR | Open-set recognition의 기초 | ✕ | ✕ | ● | ● | ✕ | ✕ | [abhijitbendale/OSDN](https://github.com/abhijitbendale/OSDN) (공식) | BSD-3-Clause ⚠️ 번들 libMR은 **비상업 전용** | ● | **Unknown label 거부의 출발점 (RQ1/RQ3).** Weibull fitting을 libMR 대신 직접 구현해야 한다 — **Tier 2 강등 검토(#69 T15)**: Vaze et al.은 좋은 closed-set 분류기의 MLS가 OpenMax 이상이라고 보고하고, libMR은 비상업 전용이다. Week 11 baseline은 kNN-OOD + MLS로 두고 OpenMax는 비교용으로 내리는 안을 Week 11 시작 시 정한다 |
 | [Prototypical Networks](https://arxiv.org/abs/1703.05175) | 2017 | NeurIPS | Few-shot metric learning | ✕ | ● | ● | ○ | ✕ | ✕ | [jakesnell/prototypical-networks](https://github.com/jakesnell/prototypical-networks) (공식) | MIT | ● | **Prototype 등록 구조의 이론적 근거 (RQ4)** |
+| [ComAD](https://github.com/liutongkun/ComAD) (Liu et al.) | 2023 | Adv. Eng. Informatics 58 | 부품 분할 기반 **logical** AD (LOCO) | ● | ? | ✕ | ✕ | ● | ○ | [liutongkun/ComAD](https://github.com/liutongkun/ComAD) (공식) | ⚠️ **LICENSE 없음** (허락 없이 재사용 불가) | ? | **#69 T15 추가.** 부품(component) 단위 개수·배치 규칙 — 우리 Label Slot·Recipe 규칙과 직접 대응. arXiv ID 미확인 |
+| [PSAD](https://ojs.aaai.org/index.php/AAAI/article/view/28703) (Kim et al.) | 2024 | AAAI | Few-shot part segmentation → compositional logic AD | ● | ● | ✕ | ✕ | ● | ○ | [oopil/PSAD_logical_anomaly_detection](https://github.com/oopil/PSAD_logical_anomaly_detection) (공식) | ⚠️ **LICENSE 없음** | ? | **#69 T15 추가.** few-shot 분할로 구성 논리를 본다 — RQ3·RQ4. arXiv ID 미확인 |
+| [CSAD](https://arxiv.org/abs/2408.15628) (Hsieh & Lai) | 2024 | BMVC? | 비지도 component segmentation + logical AD | ● | ✕ | ✕ | ✕ | ● | ○ | [Tokichan/CSAD](https://github.com/Tokichan/CSAD) (공식) | Apache-2.0 | ○ | **#69 T15 추가.** foundation model로 분할 라벨 자동 생성. venue는 원문 확인 |
+| [kNN-OOD](https://arxiv.org/abs/2204.06507) (Sun et al.) | 2022 | ICML | Deep nearest neighbor 기반 OOD 탐지 | ✕ | ○ | ● | ● | ✕ | ✕ | [deeplearning-wisc/knn-ood](https://github.com/deeplearning-wisc/knn-ood) (공식) | ⚠️ **LICENSE 없음** — 방법은 단순해 직접 구현 | ○ | **#69 T15 추가.** 임베딩 거리 기반 Unknown label 거부의 이론적 근거 — Week 9 DINOv2 prototype retrieval과 같은 구조 (RQ1) |
+| [Vaze et al.](https://arxiv.org/abs/2110.06207) "Open-Set Recognition: a Good Closed-Set Classifier is All You Need?" | 2022 | ICLR (Oral) | closed-set 정확도와 open-set 성능의 관계, MLS baseline | ✕ | ✕ | ● | ● | ✕ | ✕ | [sgvaze/osr_closed_set_all_you_need](https://github.com/sgvaze/osr_closed_set_all_you_need) (공식) | MIT | ✕ | **#69 T15 추가.** 좋은 closed-set 분류기의 max-logit만으로 OpenMax급 — Week 11 open-set baseline 선택 근거 |
 
 ### 라이선스 확인 결과 (2026-09-21, #6)
 
@@ -96,3 +101,6 @@ Problem / Input / Training Data / Method / Output / Limitation for my problem
 | MVTec LOCO AD | 훑어봄 (Week 1) | [`mvtec_loco_ad.md`](mvtec_loco_ad.md) |
 | PatchCore | 훑어봄 (Week 1) | [`patchcore.md`](patchcore.md) |
 | 나머지 Tier 1 | 미착수 | - |
+
+**읽기 순서 (#69 T15, 주말마다 1편)**: Week 9 전 — AnomalyDINO, kNN-OOD / Week 12 Gate 전 — ComAD, PSAD, CSAD, Vaze et al.
+Tier 1 요약을 Week 12 Gate(재조정안 12-19 주말) 전에 끝낸다.
