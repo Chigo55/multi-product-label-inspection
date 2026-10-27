@@ -369,6 +369,28 @@ def test_product_level_ng_beats_review_regardless_of_severity() -> None:
     assert product["review_rate"]["k"] == 1
 
 
+def test_product_detection_attributed_needs_the_defective_slot() -> None:
+    """불량 슬롯은 OK인데 같은 제품의 정상 슬롯이 NG여서 잡힌 것은 귀속 검출이 아니다 (#69 T13).
+
+    ADR 0003의 Product-level 판정(하나라도 NG면 NG)은 그대로다 — 이 지표는 보조로만 쓴다.
+    """
+    rows, preds = _units(
+        {
+            "lucky": [("s1", "defect", OK, "MAJOR"), ("s2", "normal", NG, None)],
+            "found": [("s1", "defect", REVIEW, "MAJOR"), ("s2", "normal", OK, None)],
+            "missed": [("s1", "defect", OK, "MAJOR"), ("s2", "normal", OK, None)],
+            "clean": [("s1", "normal", OK, None)],
+        }
+    )
+    m = evaluate(rows, preds)
+    assert (
+        m["product_level"]["defect_escape_rate"]["k"],
+        m["product_level"]["defect_escape_rate"]["n"],
+    ) == (1, 3)
+    attributed = m["product_detection_attributed"]
+    assert (attributed["k"], attributed["n"]) == (1, 3)
+
+
 def test_product_level_cder_follows_critical_label() -> None:
     rows, preds = _units({"u1": [("s1", "defect", OK, "CRITICAL"), ("s2", "defect", NG, "MINOR")]})
     m = evaluate(rows, preds)

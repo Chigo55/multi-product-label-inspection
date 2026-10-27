@@ -141,6 +141,12 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
             by_slot[f"{r.get('product_id')}.{r.get('label_slot')}"].append(d)
     slot_fpr = {k: rate(v.count(NG), len(v)) for k, v in sorted(by_slot.items())}
     slot_values = [x["value"] for x in slot_fpr.values()]
+    # 귀속 검출(§4 보조): 불량 제품을 불량 슬롯 자체가 OK가 아닐 때만 잡았다고 센다. 같은 제품의 정상 슬롯이
+    # REVIEW/NG여서 잡힌 것은 빼므로, 과검이 많은 모델이 Product-level DER에서 유리해지는 것을 드러낸다
+    defect_units: dict[str, bool] = {}
+    for r, d in zip(rows, decision, strict=True):
+        if r["normal_or_defect"] == "defect":
+            defect_units[r["unit_id"]] = defect_units.get(r["unit_id"], False) or d != OK
     # 행 수가 아니라 쌍·아이덴티티 수가 일반화의 표본이다 — 행 단위 CI는 "이 쌍, 이 라벨"에 대한 구간이다 (§5)
     e5_rows, e5_dec = _e5_subset(rows, decision)
     tiers = sorted({r["e5_tier"] for r in e5_rows})
@@ -163,6 +169,7 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         "n_identities": len(unknown),
         "label_level": _decision_metrics(*_group(rows, decision, score, ("unit_id", "label_slot"))),
         "product_level": _decision_metrics(*_group(rows, decision, score, ("unit_id",))),
+        "product_detection_attributed": rate(sum(defect_units.values()), len(defect_units)),
     }
 
 

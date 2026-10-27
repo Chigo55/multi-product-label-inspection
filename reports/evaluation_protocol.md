@@ -1,4 +1,4 @@
-# Evaluation Protocol v1.5
+# Evaluation Protocol v1.6
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -152,6 +152,7 @@ Product-level에서 정상으로 집계된다. `CRITICAL`은 Critical Defect Esc
 | 지표 | 정의 |
 |---|---|
 | **Review Rate** | REVIEW 판정 비율 (label-level / product-level 각각) |
+| 귀속 검출 (보조) | `product_detection_attributed`: 불량 제품 중 **불량 슬롯 자체가 OK가 아닌** 제품의 비율. 같은 제품의 정상 슬롯이 REVIEW/NG여서 잡힌 것은 세지 않는다. Week04에서 random 모델이 잡은 불량 제품 305개 중 214개(70%)가 그렇게 잡혀, 과검이 많은 모델이 Product-level DER에서 유리해졌다. Product-level 판정 규칙(ADR 0003)은 그대로 두고 **Product-level 표에 함께 싣는 보조 지표**로만 쓴다 (#69 T13) |
 | 슬롯별 FPR | `false_positive_rate_by_slot`(`{product}.{slot}`별 FPR)과 `slot_fpr_spread`(최댓값 − 최솟값). 한 threshold로 묶으면 NG가 특정 슬롯에 몰리는지 본다 (§6 정규화) |
 | Localization | (annotation 있는 subset 한정) IoU 또는 sPRO |
 
@@ -365,3 +366,4 @@ Camera acquisition
 | v1.3 | 2026-10-27 | §6 r을 제품 검토 예산 R에서 역산(Pilot R=5%, #69 결정 3), risk–coverage 곡선과 AURC 정의(R 격자, E1 범위, 점마다 val 재calibration). §9 `e1_aurc`, `risk_coverage` artifact (#69 T10) |
 | v1.4 | 2026-10-27 | §3 쌍별·아이덴티티별 분해(`similar_label_confusion_rate_by_pair`, `unknown_label_ok_rate_by_label`, `n_pairs`, `n_identities`), §5 E3·E5는 아이덴티티·쌍 수를 함께 보고 (#69 T11) |
 | v1.5 | 2026-10-27 | §6 슬롯별 점수 정규화(val 정상 통계, zscore/rank → 제품별 공통 threshold), §4 슬롯별 FPR과 `slot_fpr_spread` (#69 T12) |
+| v1.6 | 2026-10-27 | §4 보조 지표 `product_detection_attributed`(불량 슬롯 자체가 잡혔을 때만 검출, ADR 0003 판정은 그대로) (#69 T13) |

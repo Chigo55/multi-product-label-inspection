@@ -253,6 +253,7 @@ def main() -> None:
             f"  CDER {pct(m['critical_defect_escape_rate'])}"
             f"  FPR {pct(m['false_positive_rate'])}  Review {pct(m['review_rate'])}"
         )
+    print(f"E1 product_detection_attributed  : {pct(e1['product_detection_attributed'])}")
     print(f"E1 known_label_accuracy          : {pct(e1['known_label_accuracy'])}")
     for name in (
         "unknown_label_ok_rate",
