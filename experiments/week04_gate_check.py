@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 import tempfile
@@ -28,15 +27,29 @@ import yaml
 from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
 from src.evaluation.latency import Stage, environment, measure, summarize
-from src.evaluation.metrics import NG, OK, UNKNOWN, calibrate, decide, evaluate
+from src.evaluation.metrics import (
+    NG,
+    OK,
+    REVIEW_POLICY,
+    UNKNOWN,
+    calibrate,
+    decide,
+    label_rate,
+    risk_coverage,
+)
+from src.evaluation.scenarios import evaluate_scenarios, scenario_rows
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
+from src.utils.pilot import check_built_version, text_sha256
 from src.utils.tracking import (
     flat_metrics,
+    flat_scenario_metrics,
     git_commit,
     git_is_dirty,
+    open_test,
     start_experiment,
     write_predictions,
+    write_risk_coverage,
 )
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week04_gate_check.yaml"
@@ -60,8 +73,15 @@ def score_all(rows: list[dict], labels: list[str], rng: np.random.Generator) -> 
     ]
 
 
-def run(rows: list[dict], recipe: dict, cfg: dict) -> tuple[list[dict], dict, dict]:
-    """score → 제품별 val calibration → test 판정 → 평가. rng를 매번 새로 만들어 재현성을 본다."""
+def run(
+    rows: list[dict], recipe: dict, cfg: dict, review_target: float | None = None
+) -> tuple[list[dict], dict, dict]:
+    """score → 제품별 val calibration → test 판정 → 평가. rng를 매번 새로 만들어 재현성을 본다.
+
+    f·r은 Recipe의 제품 단위 목표 F·R에서 제품별 L로 역산한다 (§6). `review_target`으로 R을 바꾸면
+    risk-coverage 점 하나가 된다.
+    """
+    review = recipe["product_review_target"] if review_target is None else review_target
     rng = np.random.default_rng(cfg["experiment"]["seed"])
     dec, split = cfg["decision"], cfg["dataset"]["split"]
     labels = [k for k, v in recipe["labels"].items() if v.get("known", True)] + [UNKNOWN]
@@ -69,17 +89,18 @@ def run(rows: list[dict], recipe: dict, cfg: dict) -> tuple[list[dict], dict, di
     for pid, spec in recipe["products"].items():
         mine = [r for r in rows if r["product_id"] == pid]
         val = [r for r in mine if r["split"] == dec["calibration_split"]]
-        f = 1 - (1 - recipe["product_false_reject_target"]) ** (1 / len(spec["slots"]))
+        f = label_rate(recipe["product_false_reject_target"], len(spec["slots"]))
+        r_label = label_rate(review, len(spec["slots"]))
         val_scores = [p["anomaly_score"] for p in score_all(val, labels, rng)]
-        t_ok, t_ng = calibrate(val, val_scores, f, dec["normal_review_rate"])
-        n_normal = sum(r["normal_or_defect"] == "normal" for r in val)
-        thresholds[pid] = {"f": f, "ok": t_ok, "ng": t_ng, "n_val_normal": n_normal}
+        t_ok, t_ng = calibrate(val, val_scores, f, r_label)
+        n_normal = sum(row["normal_or_defect"] == "normal" for row in val)
+        thresholds[pid] = {"f": f, "r": r_label, "ok": t_ok, "ng": t_ng, "n_val_normal": n_normal}
         test = [r for r in mine if r["split"] == split]
         preds += [
             p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)}
             for p in score_all(test, labels, rng)
         ]
-    return preds, evaluate([r for r in rows if r["split"] == split], preds), thresholds
+    return preds, evaluate_scenarios([r for r in rows if r["split"] == split], preds), thresholds
 
 
 def dummy_pipeline(unit_rows: list[dict], stage: Stage) -> None:
@@ -105,13 +126,15 @@ def write_gallery(out: Path, image_root: Path, test: list[dict], preds: list[dic
 def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     reg = load_yaml(REGISTRY_PATH)[cfg["dataset"]["name"]]
+    test_tags = open_test(reg, cfg)  # 봉인된 pilot test는 final_report일 때만 (#69 T9)
     recipe_path = REPO_ROOT / reg["recipe"]
-    recipe_sha = hashlib.sha256(recipe_path.read_bytes()).hexdigest()
+    recipe_sha = text_sha256(recipe_path.read_bytes())
     if recipe_sha != reg["sha256"]:
         raise ValueError(f"Recipe가 registry와 다르다 — build_pilot.py로 재생성: {recipe_sha}")
     recipe = load_yaml(recipe_path)
 
     image_root = SHARED_ROOT / reg["root"]
+    check_built_version(image_root, reg["version"])
     rows = read_jsonl(SHARED_ROOT / reg["metadata"])
     if errors := find_errors(rows, image_root=image_root):
         raise ValueError(f"metadata 검증 실패 {len(errors)}건: {errors[:5]}")
@@ -123,6 +146,15 @@ def main() -> None:
         raise ValueError("재현성 실패: 같은 seed로 두 번 돌린 지표가 다르다")
 
     test = [r for r in rows if r["split"] == cfg["dataset"]["split"]]
+
+    # risk-coverage (§6): F 이상의 R 격자에서 E1 범위 판정. 점마다 val에서 다시 calibration한다
+    e1 = scenario_rows(test, "E1")
+
+    def decide_at(target: float) -> list[str]:
+        by_id = {p["sample_id"]: p["decision"] for p in run(rows, recipe, cfg, target)[0]}
+        return [by_id[row["sample_id"]] for row in e1]
+
+    rc = risk_coverage(e1, decide_at, recipe["product_false_reject_target"])
     units: dict[str, list[dict]] = defaultdict(list)
     for r in test:
         units[r["unit_id"]].append(r)
@@ -138,13 +170,14 @@ def main() -> None:
 
     start_experiment(cfg["tracking"]["experiment_name"])
     with mlflow.start_run(run_name="dummy-pilot") as run_info:
-        mlflow.set_tags({"purpose": "month1_gate", "citable": "false"})
+        mlflow.set_tags({"purpose": "month1_gate", "citable": "false"} | test_tags)
         # Pilot은 제품마다 L이 달라 f와 threshold가 제품별이다 → `{이름}_{제품}`
         per_product = {
             f"{key}_{pid}": t[name]
             for pid, t in thresholds.items()
             for key, name in (
                 ("normal_ng_rate", "f"),
+                ("normal_review_rate", "r"),
                 ("threshold_ok", "ok"),
                 ("threshold_ng", "ng"),
                 ("num_val_normal", "n_val_normal"),
@@ -164,13 +197,13 @@ def main() -> None:
                 "model_name": cfg["model"]["name"],
                 "n_shot": "none",
                 "seed": cfg["experiment"]["seed"],
-                "threshold_source": "per-product val normal quantile, f from product F",
+                "threshold_source": "per-product val normal quantile, f/r from product F/R",
                 "product_false_reject_target": recipe["product_false_reject_target"],
-                "normal_review_rate": cfg["decision"]["normal_review_rate"],
+                "product_review_target": recipe["product_review_target"],
                 "num_test": len(test),
                 "num_test_units": len(units),
                 "reproducible": reproducible,
-                "review_policy": metrics["review_policy"],
+                "review_policy": REVIEW_POLICY,
             }
             | per_product
             | environment(
@@ -180,7 +213,11 @@ def main() -> None:
                 lat_cfg["precision"],
             )
         )
-        mlflow.log_metrics(flat_metrics(metrics | latency))
+        mlflow.log_metrics(
+            flat_scenario_metrics(metrics)
+            | flat_metrics(latency)
+            | ({"e1_aurc": rc["aurc"]} if rc["aurc"] is not None else {})
+        )
         for path in (CONFIG_PATH, REGISTRY_PATH, recipe_path):
             mlflow.log_artifact(str(path), artifact_path="config")
         with tempfile.TemporaryDirectory() as tmp:
@@ -190,6 +227,7 @@ def main() -> None:
             )
             (Path(tmp) / "latency.json").write_text(json.dumps(latency, indent=2), encoding="utf-8")
             write_gallery(Path(tmp) / "gallery", image_root, test, preds)
+            write_risk_coverage(Path(tmp), rc, recipe["product_review_target"])
             mlflow.log_artifacts(tmp)
 
     def pct(r: dict) -> str:
@@ -202,26 +240,45 @@ def main() -> None:
             f"thresh {pid}: f={t['f']:.3%} ok={t['ok']:.4f} ng={t['ng']:.4f}"
             f"  (val 정상 {t['n_val_normal']})"
         )
-    levels = (("Defect", metrics), ("Label", metrics["label_level"]))
-    for level, m in (*levels, ("Product", metrics["product_level"])):
+    e1 = metrics["E1"]
+    for level, m in (
+        ("Defect", e1),
+        ("Label", e1["label_level"]),
+        ("Product", e1["product_level"]),
+    ):
         print(
-            f"{level:7s}: n={m['n']}  DER {pct(m['defect_escape_rate'])}"
+            f"E1 {level:7s}: n={m['n']}  DER {pct(m['defect_escape_rate'])}"
             f"  CDER {pct(m['critical_defect_escape_rate'])}"
             f"  FPR {pct(m['false_positive_rate'])}  Review {pct(m['review_rate'])}"
         )
+    print(f"E1 product_detection_attributed  : {pct(e1['product_detection_attributed'])}")
+    print(f"E1 known_label_accuracy          : {pct(e1['known_label_accuracy'])}")
     for name in (
-        "known_label_accuracy",
+        "unknown_label_ok_rate",
         "unknown_label_detection_rate",
         "unknown_forced_rate",
         "open_set_accuracy",
-        "unknown_label_ok_rate",
     ):
-        print(f"{name:29s}: {pct(metrics[name])}")
-    e5 = metrics["similar_label_confusion_rate"]
+        print(f"E3 {name:29s}: {pct(metrics['E3'][name])}")
+    print(
+        "E4 DER : "
+        + "  ".join(f"{k} {pct(v)}" for k, v in metrics["E4"]["defect_escape_rate_by_type"].items())
+    )
+    e5 = metrics["E5"]["similar_label_confusion_rate"]
     print("E5     : " + "  ".join(f"{k} {pct(v)}" for k, v in e5.items()))
+    print(
+        f"E5 쌍 수 {metrics['E5']['n_pairs']}  E3 미등록 아이덴티티 {metrics['E3']['n_identities']}"
+    )
     print(
         f"Latency: P50 {latency['latency_p50']:.3f} / P95 {latency['latency_p95']:.3f} ms"
         f"  (제품 {latency['latency_n']}회)"
+    )
+    print(
+        f"E1 risk-coverage (AURC {rc['aurc']:.4f}): "
+        + "  ".join(
+            f"R={p['product_review_target']:.1%}→정상 flag {pct(p['normal_flagged'])} DER {pct(p['der'])}"
+            for p in rc["points"]
+        )
     )
     print("※ dummy — 숫자는 의미 없음")
 

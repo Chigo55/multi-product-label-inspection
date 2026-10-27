@@ -1,4 +1,4 @@
-# Evaluation Protocol v0.9
+# Evaluation Protocol v1.7
 
 > 작성일: 2026-09-12 (Week 1)
 > 목적: **무엇을 측정할지를 고정한다.** (계산 코드 구현은 Week 4)
@@ -91,8 +91,9 @@ positive = defect 기준.
 | **Known Label Accuracy** | `is_known_label=true` 샘플에서 `actual_label_id`를 맞춘 비율 |
 | **Unknown Label Detection Rate** | `is_known_label=false` 샘플을 `UNKNOWN`으로 거부한 비율 |
 | **Unknown Forced Rate** | `is_known_label=false` 샘플을 **등록 라벨 id로 억지 분류**한 비율 (아래 경고의 별도 실패 유형) |
-| **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
+| **Similar-label Confusion Rate** | E5 난이도 구간별로, `E5-<구간>` 태그가 달린 바꿔치기 불량(`wrong_label` / `wrong_product_label` / `revision_mismatch`) 중 `OK`로 나간 비율. 즉 **구간별 DER**이다 (아래) |
 | **Unknown Label OK Rate** | `is_known_label=false` row 중 판정이 `OK`인 비율 (`unknown_label_ok_rate`). **E3의 주 성공 기준**(0건 + 상한). 판정만 쓰므로 identity를 내지 않는 AD 모델에도 적용된다 |
+| 쌍별·아이덴티티별 분해 | `similar_label_confusion_rate_by_pair`(순서 없는 쌍 `a-2/a-5`별 DER), `n_pairs`(구간별 서로 다른 쌍 수), `unknown_label_ok_rate_by_label`(미등록 라벨별 OK 비율), `n_identities`(미등록 아이덴티티 수). §5 유효 표본 수 |
 | Open-set 상태 정확도 | `KNOWN_EXPECTED` / `KNOWN_WRONG` / `UNKNOWN` 3-class 정확도 (`open_set_accuracy`). 정답은 `is_known_label`과 `actual_label_id` vs `expected_label_id`, 예측은 `predicted_label_id` vs `expected_label_id`로 정한다. 어떤 틀린 라벨인지는 보지 않는다 |
 
 > **Unknown을 기존 class로 억지 분류한 경우는 단순 오분류가 아니라 별도 실패 유형으로 집계한다.**
@@ -108,6 +109,9 @@ Identity 지표는 `predictions.csv`의 `predicted_label_id`만 쓴다 (§9.1). 
 적용된다 — E5 성공 기준("visual only는 Extreme에서 실패하고 +OCR/Barcode로 구별")을 같은 척도로 비교할 수 있다.
 `REVIEW`는 혼동이 아니다(사람에게 갔다). 구간은 `experiment_scenarios.md` E5, 코드는 `src/utils/pilot.py`
 `similarity_tier`. 태그가 없는 데이터(public track)는 빈 결과이며 0%로 보고하지 않는다.
+
+이 절의 지표도 **시나리오 범위 안에서** 읽는다(§4 시나리오 범위): Known Label Accuracy는 E1, Unknown Label
+OK Rate·Detection Rate·Forced Rate·Open-set 정확도는 E3, Similar-label Confusion Rate는 E5 결과를 쓴다.
 
 ---
 
@@ -148,7 +152,18 @@ Product-level에서 정상으로 집계된다. `CRITICAL`은 Critical Defect Esc
 | 지표 | 정의 |
 |---|---|
 | **Review Rate** | REVIEW 판정 비율 (label-level / product-level 각각) |
+| 귀속 검출 (보조) | `product_detection_attributed`: 불량 제품 중 **불량 슬롯 자체가 OK가 아닌** 제품의 비율. 같은 제품의 정상 슬롯이 REVIEW/NG여서 잡힌 것은 세지 않는다. Week04에서 random 모델이 잡은 불량 제품 305개 중 214개(70%)가 그렇게 잡혀, 과검이 많은 모델이 Product-level DER에서 유리해졌다. Product-level 판정 규칙(ADR 0003)은 그대로 두고 **Product-level 표에 함께 싣는 보조 지표**로만 쓴다 (#69 T13) |
+| 슬롯별 FPR | `false_positive_rate_by_slot`(`{product}.{slot}`별 FPR)과 `slot_fpr_spread`(최댓값 − 최솟값). 한 threshold로 묶으면 NG가 특정 슬롯에 몰리는지 본다 (§6 정규화) |
 | Localization | (annotation 있는 subset 한정) IoU 또는 sPRO |
+
+### 시나리오 범위 (ADR 0008)
+
+위 지표 묶음은 test 전체가 아니라 **시나리오마다 범위를 잘라 따로** 계산한다. 미등록 라벨을 NG로 거부한 row도
+`normal`이라, 전체를 한 번에 평가하면 E3의 정답이 E1의 과검으로 잡힌다. **F 판단과 헤드라인 FPR·DER은 E1
+결과만 쓴다.** 범위는 unit 단위로 고르고 한 unit의 row를 쪼개지 않는다 — 쪼개면 Product-level 판정이 달라진다.
+특정 질문을 위해 덧붙인 unit 묶음(E5 전용, `GEOM-boundary`, `OCR-confusable`)은 E1·E4에서 빼고 각각 따로 평가한다.
+규칙의 정본은 `experiment_scenarios.md` "평가 범위", 코드는 `src/evaluation/scenarios.py`
+`evaluate_scenarios()`다. 범위가 빈 시나리오는 결과에 없다(0%로 보고하지 않는다).
 
 ---
 
@@ -172,6 +187,9 @@ Observed CDER:
 - 이항 비율 신뢰구간은 **Clopper-Pearson(exact) 양측 95%** 를 기본으로 한다. 분모가 0이면 지표는 정의되지 않는다(`null`).
 - escape가 0건인 경우 상한은 `1 − 0.025^(1/n)` ≈ `3.7/n`이다 (rule of three `3/n`은 단측 95%라 쓰지 않는다). → **"0 escape"는 n이 작으면 아무것도 증명하지 않는다.**
 - 랜덤성이 있는 실험(few-shot 샘플링 등)은 **최소 3 seed**, 평균 ± 표준편차로 보고한다.
+- **E3·E5는 행 수와 함께 아이덴티티 수·쌍 수를 보고한다** (#69 T11). 행 단위 Clopper–Pearson 구간은 "유사 라벨 일반"이
+  아니라 "이 쌍, 이 라벨"에 대한 구간이다 — Pilot의 E5-extreme은 75행이지만 쌍은 b-3/b-4 하나, E3는 40행이지만
+  미등록 아이덴티티는 u-1·u-2 둘이다. 쌍·아이덴티티별 분해(§3)를 함께 내고, 일반화 주장은 쌍 수가 받쳐 줄 때만 한다.
 
 ---
 
@@ -190,6 +208,22 @@ Observed CDER:
   불량 없이 정상만으로 기준을 잡는다 — 불량이 희소한 현장 조건과 같다. 불량은 test에서 처음 본다.
 - **f는 제품 단위 목표에서 역산한다.** 제품당 라벨이 L장이고 라벨 오류가 독립이면
   제품 과검률 ≈ 1 − (1 − f)^L 이다 (f=1%, L=5 → 약 4.9%). public track은 L=1이라 f가 곧 제품 과검률이다.
+- **r도 제품 단위 검토 예산 R에서 역산한다** (#69 T10): r = 1 − (1 − R)^(1/L). Pilot R = 5%(Recipe
+  `product_review_target`, #69 결정 3) → L=3 r≈1.70%, L=4 r≈1.27%. 라벨 단위 r=10%가 제품 단위에서는 정상 제품의
+  약 35%를 REVIEW로 보냈다(Week04). public은 L=1이라 r = R이다. 코드: `label_rate()`.
+- **risk–coverage**: r 하나로 방법을 비교하면 결과가 r 선택에 좌우된다. f는 고정하고 R을 격자
+  `RC_TARGETS`(1, 2, 3, 5, 7.5, 10, 15, 20, 30%, F 미만은 제외)로 바꿔 가며 점마다 val에서 다시 calibration하고,
+  E1 범위에서 점마다 `normal_flagged`(정상 제품 중 REVIEW 이상 — R이 겨냥한 값, 예산을 지켰는지 본다),
+  `review_rate`(전체 제품 중 REVIEW — 실제 검토 부담), 제품 DER·CDER를 분자·분모·95% CI와 함께 낸다.
+  **AURC = 고정된 R 격자 위 제품 DER의 사다리꼴 면적 ÷ 구간 폭**(R 구간의 평균 DER)이다. x축을 실제 Review Rate로
+  두면 적분 구간이 방법마다 달라 비교할 수 없다(점수가 전부 같은 모델은 x가 한 점에 몰려 면적 0이 된다).
+  같은 F일 때 격자가 같으므로 방법끼리 비교된다. 작을수록 같은 예산에서 덜 샌다.
+  코드: `risk_coverage()`, artifact `risk_coverage.csv` / `.png`, metric `e1_aurc`.
+- **슬롯별 점수 정규화** (#69 T12): 라벨 종류마다 정상 점수 분포가 달라 한 threshold로 묶으면 NG가 특정 슬롯에
+  몰린다. 슬롯별 분위수 threshold는 쓰지 않는다 — 슬롯당 val 정상 약 170행에 f=0.334%면 꼬리가 0.57건이다.
+  대신 `(product_id, label_slot)`마다 val 정상으로 평균·표준편차를 잡아 점수를 z-score로 맞춘 뒤 제품별 공통 분위수
+  threshold를 정한다. 코드: `normalize()` → `calibrate()`. 정규화 전후 `slot_fpr_spread`를 함께 보고한다.
+  분위수 rank 정규화는 쓰지 않는다 — f < 1/n(슬롯당 n≈170, f=0.334%)이면 t_ng가 rank 최댓값 1.0에 붙어 NG가 나올 수 없다.
 - val이 작으면 분위수 해상도가 거칠다 (n=42 → 약 2.4% 단위). 보고할 때 val 정상 수를 함께 적는다.
 - `REVIEW` 구간은 두 threshold(`ok`, `ng`)로 정의한다: `score < ok → OK`, `score > ng → NG`, 사이는 `REVIEW`.
   **경계값(`score == ok` 또는 `== ng`)은 `REVIEW`** 다 — 애매하면 사람에게 보낸다.
@@ -258,17 +292,23 @@ Camera acquisition
 [params]  git_commit, dataset_version, config_path, model_name,
           threshold_ok, threshold_ng (Pilot은 제품별: threshold_ok_A …), n_shot, seed, device,
           latency_batch_size, latency_resolution, latency_precision, host_platform, host_cpu, python (+ gpu, cuda)
+          (+ 바코드를 읽는 모델: barcode_decoders, pyzbar_version, zbar_version, zxing_cpp_version)
 
 [metrics] defect_escape_rate, critical_defect_escape_rate,
           false_positive_rate, precision, recall, f1, auprc, auroc,
           false_positive_rate_2state,
           known_label_accuracy, unknown_label_detection_rate, unknown_forced_rate,
           unknown_label_ok_rate, open_set_accuracy,
-          review_rate_label, review_rate_product,
+          review_rate_label, review_rate_product, aurc (§6, E1),
           latency_n, latency_p50, latency_p95, latency_p99
 
-[artifacts] config 사본, FP/FN gallery, latency breakdown(`latency.json`: 구간별 평균 + 시간대별 제품 수), evidence 예시
+[artifacts] config 사본, FP/FN gallery, latency breakdown(`latency.json`: 구간별 평균 + 시간대별 제품 수),
+          risk–coverage(`risk_coverage.csv`/`.png`, §6), evidence 예시
 ```
+
+지표 이름 앞에는 **범위 접두사** `e1_` / `e3_` / `e4_` / `e5_` / `geom_boundary_` / `ocr_confusable_`를 붙인다(§4 시나리오 범위, ADR 0008).
+예: `e1_defect_escape_rate`, `e1_false_positive_rate_product`, `e3_unknown_label_ok_rate`. latency 지표는
+제품 1개 처리 시간이라 시나리오와 무관하므로 접두사가 없다. 접두사 없는 전체 평가 지표는 기록하지 않는다.
 
 비율 지표는 `{name}`(값) 외에 `{name}_k`, `{name}_n`, `{name}_ci95_low`, `{name}_ci95_high`를 함께
 기록한다. Label/Product-level 지표는 이름 뒤에 `_label` / `_product`를 붙인다(예: `review_rate_product`,
@@ -285,13 +325,14 @@ Camera acquisition
 | `decision` | `OK` / `REVIEW` / `NG` |
 | `anomaly_score` | 판정 전 score (클수록 이상) |
 | `predicted_label_id` | Label Identity 예측. 등록되지 않은 라벨로 거부하면 `UNKNOWN`. identity를 내지 않는 모델은 빈 값 |
+| `barcode_result` | `MATCH` / `MISMATCH` / `CONFLICT` / `UNREADABLE` — 두 디코더 합의 규칙(`src/models/barcode.py`). `MATCH`는 OK, `MISMATCH`는 NG, `CONFLICT`·`UNREADABLE`은 REVIEW. 바코드 없는 라벨(`expected_barcode` null)이나 바코드를 읽지 않는 모델은 빈 값 |
 | `latency_ms` | 샘플 1건 처리 시간 |
 | `image_path`, `normal_or_defect`, `defect_type` | 실패 분석용으로 metadata에서 복사한 ground truth |
 
 모델이 늘어나면 열을 **추가**한다(예: `prototype_score`, `open_set_score`, `ocr_result`,
-`barcode_result`, `rule_violations`). 기존 열의 의미는 바꾸지 않는다.
+`rule_violations`). 기존 열의 의미는 바꾸지 않는다.
 
-함께 저장: `metrics.json`(지표 전체 + confusion matrix + REVIEW 처리 규칙), config 사본,
+함께 저장: `metrics.json`(시나리오별 지표 전체 + confusion matrix + REVIEW 처리 규칙), config 사본,
 `datasets/registry.yaml` 사본.
 
 ---
@@ -323,3 +364,11 @@ Camera acquisition
 | v0.7 | 2026-10-06 | §4 Label/Product-level 집계 구현(정답·score 묶는 규칙 명시), §0 FPR 2-state, §3 Unknown Forced Rate와 identity 지표 분모 규칙, §9 level 접미사, §9.1 `UNKNOWN` (#37) |
 | v0.8 | 2026-10-06 | §7 latency 측정 규칙 구현(벽시계 total, 구간 이름 고정, GPU sync, 시간대 경계, 보고용은 Jetson만 #5), §9 측정 환경 params (#38) |
 | v0.9 | 2026-10-06 | Month 1 Gate(#39): §3 Unknown Label OK Rate(E3 주 기준)·Open-set 정확도 코드화, §6 val 전용 calibration을 코드로 강제, §9 Pilot 제품별 threshold param과 신규 지표 |
+| v1.0 | 2026-10-27 | §4 시나리오 범위(ADR 0008): 시나리오마다 unit 단위로 잘라 평가, F·헤드라인 FPR/DER은 E1만. §3 지표별 해당 시나리오. §9 지표 이름에 시나리오 접두사(`e1_` …), `metrics.json`은 시나리오별 (#69 T2) |
+| v1.1 | 2026-10-27 | §9.1 `barcode_result` 열 정의(두 디코더 합의, #69 T3·#66). 디코더 이름·버전은 param(`barcode_decoders`, `pyzbar_version`, `zbar_version`, `zxing_cpp_version`) — pyzbar는 래퍼라 실제 디코더 libzbar 버전을 따로 남긴다 |
+| v1.2 | 2026-10-27 | Pilot v0.4(#69 T5~T7): §3 Similar-label Confusion Rate의 바꿔치기에 `revision_mismatch` 포함(구 revision 라벨로 바꿔 붙인 것, E5-hard). §4 덧붙인 unit 묶음(`GEOM-boundary`, `OCR-confusable`)은 E1·E4에서 빼고 따로 평가, §9 접두사 `geom_boundary_` / `ocr_confusable_` |
+| v1.3 | 2026-10-27 | §6 r을 제품 검토 예산 R에서 역산(Pilot R=5%, #69 결정 3), risk–coverage 곡선과 AURC 정의(R 격자, E1 범위, 점마다 val 재calibration). §9 `e1_aurc`, `risk_coverage` artifact (#69 T10) |
+| v1.4 | 2026-10-27 | §3 쌍별·아이덴티티별 분해(`similar_label_confusion_rate_by_pair`, `unknown_label_ok_rate_by_label`, `n_pairs`, `n_identities`), §5 E3·E5는 아이덴티티·쌍 수를 함께 보고 (#69 T11) |
+| v1.5 | 2026-10-27 | §6 슬롯별 점수 정규화(val 정상 통계, zscore/rank → 제품별 공통 threshold), §4 슬롯별 FPR과 `slot_fpr_spread` (#69 T12) |
+| v1.6 | 2026-10-27 | §4 보조 지표 `product_detection_attributed`(불량 슬롯 자체가 잡혔을 때만 검출, ADR 0003 판정은 그대로) (#69 T13) |
+| v1.7 | 2026-10-27 | §6 risk–coverage x축을 고정된 R 격자로, AURC = 구간 평균 DER로 재정의, 점마다 `normal_flagged`와 분자·분모·CI. 슬롯 정규화는 z-score만(rank는 f < 1/n에서 NG 불가) (#69 T10·T12 리뷰) |

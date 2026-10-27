@@ -3,7 +3,7 @@
 다품종·다라벨 제조 환경을 위한 **Explainable Hybrid Inspection System** 연구 저장소.
 
 - 기준 문서: [`docs/multi_product_multi_label_industrial_inspection_research_summary.md`](docs/multi_product_multi_label_industrial_inspection_research_summary.md)
-- 연구 기간: 24주 (Week 1 시작일 2026-09-12)
+- 연구 기간: 24주 (Week 1 시작일 2026-09-12). 2026-10-27에 약 3주 순연 — Week 24 = 2027-03-13 주말 (#69)
 - 연구 시간: 주 10~15시간, 주로 주말 / **한 주말 = 하나의 명확한 실험 목표**
 
 ---
@@ -159,11 +159,27 @@ uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root
 | Phase | 기간 | 주차 메인 이슈 |
 |---|---|---|
 | [Month 1 — 문제·환경 구축](../../milestone/1) | ~2026-10-04 | [#1 Week 1](../../issues/1) · [#7 Week 2](../../issues/7) · [#8 Week 3](../../issues/8) · [#9 Week 4](../../issues/9) |
-| [Month 2 — Baseline](../../milestone/2) | ~2026-11-01 | [#10 Week 5](../../issues/10) · [#11 Week 6](../../issues/11) · [#12 Week 7](../../issues/12) · [#13 Week 8](../../issues/13) |
-| [Month 3 — 핵심 문제 검증](../../milestone/3) | ~2026-11-29 | [#14 Week 9](../../issues/14) · [#15 Week 10](../../issues/15) · [#16 Week 11](../../issues/16) · [#17 Week 12](../../issues/17) |
-| [Month 4 — Proposed Method](../../milestone/4) | ~2026-12-27 | [#18 Week 13](../../issues/18) · [#19 Week 14](../../issues/19) · [#20 Week 15](../../issues/20) · [#21 Week 16](../../issues/21) |
-| [Month 5 — Main Experiment](../../milestone/5) | ~2027-01-24 | [#22 Week 17](../../issues/22) · [#23 Week 18](../../issues/23) · [#24 Week 19](../../issues/24) · [#25 Week 20](../../issues/25) |
-| [Month 6 — Validation / Paper](../../milestone/6) | ~2027-02-21 | [#26 Week 21](../../issues/26) · [#27 Week 22](../../issues/27) · [#28 Week 23](../../issues/28) · [#29 Week 24](../../issues/29) |
+| [Month 2 — Baseline](../../milestone/2) | ~2026-11-29 | [#10 Week 5](../../issues/10) · [#11 Week 6](../../issues/11) · [#12 Week 7](../../issues/12) · [#13 Week 8](../../issues/13) |
+| [Month 3 — 핵심 문제 검증](../../milestone/3) | ~2026-12-20 | [#14 Week 9](../../issues/14) · [#15 Week 10](../../issues/15) · [#16 Week 11](../../issues/16) · [#17 Week 12](../../issues/17) |
+| [Month 4 — Proposed Method](../../milestone/4) | ~2027-01-17 | [#18 Week 13](../../issues/18) · [#19 Week 14](../../issues/19) · [#20 Week 15](../../issues/20) · [#21 Week 16](../../issues/21) |
+| [Month 5 — Main Experiment](../../milestone/5) | ~2027-02-14 | [#22 Week 17](../../issues/22) · [#23 Week 18](../../issues/23) · [#24 Week 19](../../issues/24) · [#25 Week 20](../../issues/25) |
+| [Month 6 — Validation / Paper](../../milestone/6) | ~2027-03-14 | [#26 Week 21](../../issues/26) · [#27 Week 22](../../issues/27) · [#28 Week 23](../../issues/28) · [#29 Week 24](../../issues/29) |
+
+**일정 재조정 (2026-10-27, #69 결정 5).** Week 5 시작 전에 리뷰 후속 P0(#69)을 끝내느라 약 3주 순연했다.
+Week 6~7(PatchCore·EfficientAD)은 같은 하네스(Anomalib)로 한 주에, Week 9~10(DINOv2 Prototype·AnomalyDINO)도
+한 주에 묶는다. Raspberry Pi 측정과 Human study는 **선택 항목**으로 내린다. 범위 축소는 Week 12 Gate 결과를 보고 정한다.
+
+| 주말 | Week | | 주말 | Week |
+|---|---|---|---|---|
+| 11-14 | 5 | | 01-16 | 16 (Gate) |
+| 11-21 | 6~7 | | 01-23 | 17 |
+| 11-28 | 8 (Gate) | | 01-30 | 18 |
+| 12-05 | 9~10 | | 02-06 | 19 |
+| 12-12 | 11 | | 02-13 | 20 (Feature Freeze) |
+| 12-19 | 12 (Gate) | | 02-20 | 21 |
+| 12-26 | 13 | | 02-27 | 22 |
+| 2027-01-02 | 14 | | 03-06 | 23 |
+| 01-09 | 15 | | 03-13 | 24 (논문 초안) |
 
 Week 1~4는 하위 이슈까지 분해되어 있다. Week 5 이후는 메인 이슈에 체크리스트만 있고,
 **해당 Phase가 시작될 때 분해**한다 (그 시점의 결과에 따라 내용이 달라지므로).

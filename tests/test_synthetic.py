@@ -14,7 +14,15 @@ from typing import Any
 import numpy as np
 import pytest
 
-from src.utils.synthetic import DEFAULT_SEVERITY, VISUAL_TYPES, Mutation, _change_one_char, severity
+from src.utils.synthetic import (
+    CONFUSABLE,
+    DEFAULT_SEVERITY,
+    VISUAL_TYPES,
+    Mutation,
+    _change_confusable,
+    _change_one_char,
+    severity,
+)
 
 Small = tuple[dict[str, Any], list[dict[str, Any]], Path]
 TAXONOMY = Path(__file__).resolve().parents[1] / "datasets" / "defect_taxonomy.md"
@@ -71,7 +79,7 @@ def test_visual_types_are_the_visual_section() -> None:
 def test_every_configured_type_is_generated(pilot_small: Small) -> None:
     recipe, rows, _ = pilot_small
     made = {r["defect_type"] for r in rows if r["split"] == "test" and r["defect_type"]}
-    assert made == set(recipe["build"]["defects"]["types"])
+    assert made == set(recipe["build"]["defects"]["types"]) | {"revision_mismatch"}  # v0.4 블록
 
 
 def test_no_defects_in_train_or_reference(pilot_small: Small) -> None:
@@ -202,6 +210,49 @@ def test_metadata_records_final_severity(pilot_small: Small) -> None:
     others = [r for r in _defects(rows, "blur") if r["label_slot"] != "slot-3"]
     assert {r["defect_severity"] for r in blurred_tags} <= {"CRITICAL"}
     assert {r["defect_severity"] for r in others} <= {"MAJOR"}
+
+
+def test_confusable_change_swaps_digit_and_letter() -> None:
+    """0/O, 1/I 같은 실제 OCR 혼동 쌍 (#69 T7). 그런 글자가 없으면 None."""
+    rng = np.random.default_rng(0)
+    for text in ("XA-100", "P-4471", "B-SERIES"):
+        for _ in range(20):
+            new = _change_confusable(text, rng)
+            assert new is not None and _diff_chars(text, new) == 1
+            i = next(k for k in range(len(text)) if text[k] != new[k])
+            assert {text[i], new[i]} in (
+                {"0", "O"},
+                {"1", "I"},
+                {"5", "S"},
+                {"8", "B"},
+                {"2", "Z"},
+                {"6", "G"},
+            )
+    assert _change_confusable("ACE", rng) is None
+
+
+def test_ocr_confusable_rows_are_tagged(pilot_small: Small) -> None:
+    _, rows, _ = pilot_small
+    found = [r for r in rows if "OCR-confusable" in r["experiment_tags"] and r["defect_type"]]
+    assert found
+    for r in found:
+        assert r["defect_type"] == "ocr_mismatch" and r["split"] == "test"
+        k = next(k for k in r["expected_text"] if r["expected_text"][k] != r["actual_text"][k])
+        a, b = r["expected_text"][k], r["actual_text"][k]
+        i = next(j for j in range(len(a)) if a[j] != b[j])
+        assert CONFUSABLE[a[i]] == b[i]
+
+
+def test_geom_boundary_truth_follows_actual_offset(pilot_small: Small) -> None:
+    """경계 unit(0.9~1.2배)은 실제 값이 허용 오차 이하면 정상, 넘으면 불량이다 (#69 T6)."""
+    recipe, rows, _ = pilot_small
+    tol = {p: v["tolerance"] for p, v in recipe["products"].items()}
+    found = [r for r in rows if "GEOM-boundary" in r["experiment_tags"]]
+    assert found and {r["split"] for r in found} == {"test"}
+    for r in found:
+        inside = _within(r, tol[r["product_id"]]) == (True, True)
+        assert inside == (r["normal_or_defect"] == "normal"), r["sample_id"]
+        assert r["defect_type"] in (None, "wrong_position", "wrong_orientation")
 
 
 def test_change_one_char_keeps_character_class() -> None:

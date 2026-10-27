@@ -9,7 +9,7 @@
 Inspection System이고, 시스템 출력은 `OK`/`NG`가 아니라 **판정 + 원인 + 근거**다.
 
 구현된 것은 평가 레일뿐이다: `src/utils/mvtec.py`·`visa.py`(MVTec AD / LOCO / VisA → JSONL), `src/utils/metadata.py`(JSONL 입출력·검증·public 공통 row),
-`src/evaluation/metrics.py`(지표 정본), `src/utils/tracking.py`(MLflow). 모델은 아직 없다(Week 4 Gate).
+`src/evaluation/metrics.py`(지표 정본), `src/evaluation/scenarios.py`(시나리오별 평가 범위), `src/utils/tracking.py`(MLflow). 학습 모델은 아직 없다 — 규칙 기반 구성요소가 `src/models/`에 붙기 시작했다(`barcode.py`).
 
 ## Commands
 
@@ -30,13 +30,19 @@ uv run pyrefly check             # type check
 
 uv run experiments/build_metadata.py mvtec_ad  # 원본을 registry의 root에 풀어 둔 뒤 metadata 생성 (mvtec_loco, visa도 같음)
 uv run experiments/build_pilot.py             # 자체 Pilot benchmark 생성 (Recipe → 정상·불량 이미지 + metadata, 약 5분)
+uv run experiments/build_pilot.py pilot_dev   # 같은 Recipe, 그림만 다른 분석용 세트 (Week 5~16 보고·실패 분석)
 uv run experiments/week02_pipeline_check.py   # dummy 예측 → 평가 → MLflow (레일 점검)
 uv run experiments/week04_gate_check.py   # Pilot에서 3-level·identity 지표 + 재현성 + §9 보고 세트 (Month 1 Gate)
+uv run experiments/week05_barcode_check.py # val 바코드 판독률·오판독, 디코더 합의 규칙 점검
+uv run experiments/export_pilot_real_labels.py # Pilot-Real 인쇄용 라벨 (datasets/pilot_real.md)
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts # 메인 체크아웃에서
 ```
 
 PyTorch는 하드웨어 종속이라 `pyproject.toml`에 고정하지 않는다:
 `uv add torch torchvision --index https://download.pytorch.org/whl/cu124` (CPU는 `/cpu`).
+
+바코드 디코더 중 pyzbar는 Linux에서 시스템 라이브러리가 필요하다: `sudo apt install libzbar0`
+(없으면 import에서 실패한다). Windows wheel은 DLL을 동봉하고, zxing-cpp는 양쪽 모두 wheel로 끝난다.
 
 
 ## Agent skills
@@ -66,7 +72,7 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 |---|---|
 | `docs/multi_product_..._research_summary.md` | 24주 기준 문서. **Week 1 스냅샷이므로 소급 수정하지 않는다** |
 | `CONTEXT.md` | 용어의 정본. 도메인 개념을 부를 때 여기 정의된 단어를 쓴다 |
-| `docs/adr/` | 되돌리기 어려운 결정 7건. 결정을 뒤집기 전에 읽는다 |
+| `docs/adr/` | 되돌리기 어려운 결정 8건(+ 초안 0009). 결정을 뒤집기 전에 읽는다 |
 | `reports/research_questions.md` | RQ1~RQ6과 실험 시나리오(E1~E6) 매핑 |
 | `reports/evaluation_protocol.md` | **무엇을 측정하는가.** 여기 없는 지표는 주장 근거로 쓰지 않는다. 코드 정본은 `src/evaluation/metrics.py` — 둘은 항상 같아야 한다 |
 | `reports/experiment_scenarios.md` | E1~E6 시나리오별 입력·분할·지표·성공 기준 |
@@ -89,6 +95,8 @@ MVTec AD/LOCO, VisA 같은 public benchmark와 자체 benchmark는 원본 구조
 
 evaluation 코드를 쓸 때 반드시 지켜야 하는 구조다.
 
+- **시나리오 범위**: test 전체를 한 번에 평가하지 않는다. E1·E3·E4·E5마다 unit 단위로 잘라 `evaluate_scenarios()`로
+  따로 평가하고, F 판단과 헤드라인 FPR·DER은 E1 결과만 쓴다(`docs/adr/0008`).
 - **3-state**: `OK` / `NG` / `REVIEW`. `REVIEW`는 Escape도 False Reject도 아니고 Review Rate로
   따로 보고한다(`docs/adr/0002`).
 - **Primary metric**은 Defect Escape Rate이고 Critical Escape가 실질 최우선이다.
@@ -128,6 +136,8 @@ pytest는 `pythonpath = ["."]`, pyrefly는 `search-path = ["."]`로 같은 규�
 - 어떤 RQ에도 연결되지 않는 실험은 하지 않는다. 실험 시작 전에 RQ와 Scenario를 먼저 적는다.
 - `notebooks/`는 즉흥 탐색 전용이다. **논문·보고서에 인용할 숫자는 `experiments/`에서만** 나온다.
 - threshold는 `val`(또는 calibration) split에서 정한다. **`test`로 정하지 않는다.**
+- **`pilot` test는 봉인이다**(registry `test_sealed`). 분석·gallery·Week 5~16 보고는 `pilot_dev`로 하고, 최종 보고 run만
+  config `experiment.final_report: true`로 연다(`open_test()`가 막고, 연 run에 `test_opened=true`가 남는다).
 - `expected_*` / `actual_*`에 모델 출력을 쓰지 않는다. predicted 값은 실험 결과 파일에 따로 남긴다.
 - `unknown_visual`이 붙은 샘플은 **어떤 형태로도** 학습·threshold calibration에 쓰지 않는다.
 - 원본 데이터, 모델 weight, `mlflow.db`는 커밋하지 않는다(`.gitignore` 참고).

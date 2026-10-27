@@ -8,7 +8,19 @@ from collections.abc import Sequence
 import numpy as np
 import pytest
 
-from src.evaluation.metrics import NG, OK, REVIEW, UNKNOWN, calibrate, decide, evaluate, rate
+from src.evaluation.metrics import (
+    NG,
+    OK,
+    REVIEW,
+    UNKNOWN,
+    calibrate,
+    decide,
+    evaluate,
+    label_rate,
+    normalize,
+    rate,
+    risk_coverage,
+)
 
 
 def _rows_preds(cases: Sequence[tuple[str, str, str | None]]) -> tuple[list[dict], list[dict]]:
@@ -291,6 +303,41 @@ def test_similar_label_confusion_rate_empty_without_e5_tags() -> None:
     assert evaluate(rows, preds)["similar_label_confusion_rate"] == {}
 
 
+def test_effective_sample_size_pairs_and_identities() -> None:
+    """행 수가 아니라 쌍·아이덴티티 수가 일반화의 표본이다 (#69 T11). 쌍은 순서를 따지지 않는다."""
+    rows, preds = _rows_preds(
+        [
+            ("defect", OK, "CRITICAL"),  # b-3 → b-4 extreme, 새어 나감
+            ("defect", NG, "CRITICAL"),  # b-4 → b-3 extreme (같은 쌍)
+            ("defect", NG, "CRITICAL"),  # a-2 → a-5 hard
+            ("normal", OK, "none"),  # 미등록 u-1, OK로 나감
+            ("normal", NG, "none"),  # 미등록 u-1
+            ("normal", REVIEW, "none"),  # 미등록 u-2
+        ]
+    )
+    meta = [
+        ("b-3", "b-4", ["E5-extreme"], True),
+        ("b-4", "b-3", ["E5-extreme"], True),
+        ("a-5", "a-2", ["E5-hard"], True),
+        ("u-1", "u-1", [], False),
+        ("u-1", "u-1", [], False),
+        ("u-2", "u-2", [], False),
+    ]
+    for row, (expected, actual, tags, known) in zip(rows, meta, strict=True):
+        row |= {"expected_label_id": expected, "actual_label_id": actual}
+        row |= {"experiment_tags": tags, "is_known_label": known}
+    m = evaluate(rows, preds)
+    assert m["n_pairs"] == {"extreme": 1, "hard": 1}
+    by_pair = m["similar_label_confusion_rate_by_pair"]
+    assert {k: (v["k"], v["n"]) for k, v in by_pair.items()} == {
+        "a-2/a-5": (0, 1),
+        "b-3/b-4": (1, 2),
+    }
+    assert m["n_identities"] == 2
+    by_label = m["unknown_label_ok_rate_by_label"]
+    assert {k: (v["k"], v["n"]) for k, v in by_label.items()} == {"u-1": (1, 2), "u-2": (0, 1)}
+
+
 # --- §4 Label / Product-level 집계 (ADR 0003) ---
 
 
@@ -320,6 +367,28 @@ def test_product_level_ng_beats_review_regardless_of_severity() -> None:
     }
     assert (product["defect_escape_rate"]["k"], product["defect_escape_rate"]["n"]) == (1, 2)
     assert product["review_rate"]["k"] == 1
+
+
+def test_product_detection_attributed_needs_the_defective_slot() -> None:
+    """불량 슬롯은 OK인데 같은 제품의 정상 슬롯이 NG여서 잡힌 것은 귀속 검출이 아니다 (#69 T13).
+
+    ADR 0003의 Product-level 판정(하나라도 NG면 NG)은 그대로다 — 이 지표는 보조로만 쓴다.
+    """
+    rows, preds = _units(
+        {
+            "lucky": [("s1", "defect", OK, "MAJOR"), ("s2", "normal", NG, None)],
+            "found": [("s1", "defect", REVIEW, "MAJOR"), ("s2", "normal", OK, None)],
+            "missed": [("s1", "defect", OK, "MAJOR"), ("s2", "normal", OK, None)],
+            "clean": [("s1", "normal", OK, None)],
+        }
+    )
+    m = evaluate(rows, preds)
+    assert (
+        m["product_level"]["defect_escape_rate"]["k"],
+        m["product_level"]["defect_escape_rate"]["n"],
+    ) == (1, 3)
+    attributed = m["product_detection_attributed"]
+    assert (attributed["k"], attributed["n"]) == (1, 3)
 
 
 def test_product_level_cder_follows_critical_label() -> None:
@@ -415,3 +484,85 @@ def test_open_set_accuracy_three_states() -> None:
         pred["predicted_label_id"] = predicted
     acc = evaluate(rows, preds)["open_set_accuracy"]
     assert (acc["k"], acc["n"]) == (3, 5)
+
+
+# --- §6 제품 검토 예산 R과 risk-coverage (#69 T10) ---
+
+
+def test_label_rate_inverts_product_rate() -> None:
+    """R=5%: L=3 → r≈1.70%, L=4 → r≈1.27% (이슈 #69 T10의 예). L=1이면 그대로다."""
+    assert round(label_rate(0.05, 3), 4) == 0.0170
+    assert round(label_rate(0.05, 4), 4) == 0.0127
+    assert label_rate(0.05, 1) == pytest.approx(0.05)
+
+
+def test_risk_coverage_points_and_area() -> None:
+    """예산이 작으면 불량 제품이 OK로 새고, 크면 두 제품 다 REVIEW로 간다.
+
+    x축은 고정된 R 격자다 — 0.05~0.30 위 DER(1, 1, 0, 0, 0, 0)의 면적 0.0375 ÷ 폭 0.25 = 0.15.
+    """
+    rows = [
+        {"unit_id": "bad", "normal_or_defect": "defect", "defect_severity": "CRITICAL"},
+        {"unit_id": "bad", "normal_or_defect": "normal", "defect_severity": "none"},
+        {"unit_id": "good", "normal_or_defect": "normal", "defect_severity": "none"},
+    ]
+
+    def decide_at(target: float) -> list[str]:
+        return [OK, OK, OK] if target < 0.1 else [REVIEW, OK, REVIEW]
+
+    rc = risk_coverage(rows, decide_at, 0.05)
+    first, last = rc["points"][0], rc["points"][-1]
+    assert [p["product_review_target"] for p in rc["points"]] == [0.05, 0.075, 0.1, 0.15, 0.2, 0.3]
+    assert (first["der"]["k"], first["der"]["n"], first["normal_flagged"]["k"]) == (1, 1, 0)
+    assert (last["der"]["k"], last["review_rate"]["k"], last["normal_flagged"]["k"]) == (0, 2, 1)
+    assert last["der"]["ci95"] is not None  # 비율마다 분자·분모·CI (ADR 0005)
+    assert rc["aurc"] == pytest.approx(0.15)
+
+
+# --- §6 슬롯별 점수 정규화 (#69 T12) ---
+
+
+def _two_slots(split: str, n: int, rng: np.random.Generator) -> tuple[list[dict], list[float]]:
+    """정상만. 슬롯 B는 정상 점수 분포가 3만큼 높다 — 실제 AD 모델에서 라벨 종류마다 생기는 차이."""
+    rows, scores = [], []
+    for slot, shift in (("A", 0.0), ("B", 3.0)):
+        for i in range(n):
+            rows.append(
+                {
+                    "sample_id": f"{split}/{slot}/{i}",
+                    "unit_id": f"{split}/{slot}/{i}",
+                    "product_id": "P",
+                }
+                | {"label_slot": slot, "split": split, "normal_or_defect": "normal"}
+                | {"defect_severity": "none"}
+            )
+            scores.append(float(rng.normal(shift, 1.0)))
+    return rows, scores
+
+
+def test_slot_normalization_evens_out_slot_fpr() -> None:
+    """한 threshold로 묶으면 NG가 점수 높은 슬롯에 몰린다. 정규화하면 슬롯별 FPR 편차가 준다."""
+    rng = np.random.default_rng(0)
+    val, val_scores = _two_slots("val", 400, rng)
+    test, test_scores = _two_slots("test", 400, rng)
+
+    def spread(v: list[float], t: list[float]) -> float:
+        ok, ng = calibrate(val, v, 0.05, 0.10)
+        preds = [
+            {"sample_id": r["sample_id"], "decision": decide(s, ok, ng), "anomaly_score": s}
+            for r, s in zip(test, t, strict=True)
+        ]
+        return evaluate(test, preds)["slot_fpr_spread"]
+
+    raw = spread(val_scores, test_scores)
+    normed = spread(
+        normalize(val, val_scores, val, val_scores),
+        normalize(val, val_scores, test, test_scores),
+    )
+    assert raw > 0.05 and normed < raw / 3
+
+
+def test_normalize_refuses_non_val_rows() -> None:
+    rows = [{"split": "test", "normal_or_defect": "normal", "product_id": "P", "label_slot": "A"}]
+    with pytest.raises(ValueError, match="val"):
+        normalize(rows, [0.0], rows, [0.0])

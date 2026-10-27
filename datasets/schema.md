@@ -1,4 +1,4 @@
-# Dataset Schema v1.1
+# Dataset Schema v1.1.2
 
 > 작성일: 2026-09-12 (Week 1)
 > 상태: **v1.1 — Week 2 확정.** 필드를 바꾸면 버전을 올리고 변환기·검증기를 함께 고친다. 이미지가 한 장도 없어도 스키마는 먼저 고정한다.
@@ -74,7 +74,7 @@
 | `production_lot` | string | ○ | LOT. Domain shift(E6) 분할 기준으로 사용 |
 | `revision` | string | ○ | 라벨 도면 revision (예: `03`) |
 | `split` | enum | ● | `train` \| `val` \| `test` \| `reference` |
-| `experiment_tags` | list | ○ | 해당 샘플이 속한 시나리오. 예: `["E3","E5-hard"]` |
+| `experiment_tags` | list | ○ | 시나리오 subset 표시. 값의 정의는 `reports/experiment_scenarios.md`가 정본이다. 예: `E5-hard`(바꿔치기 쌍의 E5 구간), `E5`(E5 전용 unit — E1 평가 범위에서 뺀다, ADR 0008), `GEOM-boundary`·`OCR-confusable`(Pilot v0.4 덧붙인 unit), `E6-light`. 시나리오 평가 범위는 태그만으로 정해지지 않는다(scenarios "평가 범위") |
 
 > `reference`는 few-shot 등록용 정상 이미지 전용 split이다. `train`과 분리해서 관리한다
 > (RQ4에서 shot 수를 바꿔가며 샘플링해야 하므로).
@@ -173,6 +173,8 @@ threshold를 정한다.** 공개 `test`는 건드리지 않으므로 선행 연�
 
 ### 4.4 Domain shift (E6)
 
+- 합성 데이터(Pilot)는 샘플마다 실제로 뽑힌 촬영 조건(warp, 조명 각도·gain, blur 반경, noise, offset, theta)을
+  metadata 옆 `nuisance.jsonl`(sample_id 키, 행 수 = metadata)에 따로 남긴다. schema 필드가 아니다 (#69 T8).
 - test를 shift 요인별 subset으로 나누고 **`experiment_tags`로 표시한다** (`E6-lot`, `E6-camera`, `E6-light` …).
   조명·배경·반사 전용 필드는 두지 않는다. Pilot에서 촬영 조건을 체계적으로 바꾸게 되면 필드 추가를 검토한다.
 - threshold는 in-domain `val`에서 정한 값을 **재조정 없이** 그대로 쓴다 — 재조정하면 shift 효과가 가려진다.
@@ -190,3 +192,5 @@ threshold를 정한다.** 공개 `test`는 건드리지 않으므로 선행 연�
 | v0.3 | 2026-09-21 | §4 split/leakage **제안 초안**(#30): split별 용도, unit 단일 split 규칙, val 없는 public 데이터 calibration 안 A/B/C, E6 분리. 필드 변경 없음 |
 | **v1.0** | 2026-09-21 | **확정**(#30). unit 단일 split, test LOT 분리(test ↔ 나머지 전부), Unknown label/defect test 격리, public val = train 정상 20%(sha256 순서) + 정상 분위수 calibration, E6는 태그로 표시. 필드 변경 없음 |
 | v1.1 | 2026-09-21 | §3 MVTec LOCO(공식 validation→val, defect_type=폴더명) / VisA(1cls split, image_anno 설명 → 복수 defects[]) 매핑 명시 (#32). 필드 변경 없음 |
+| v1.1.1 | 2026-10-27 | §1 `experiment_tags` 값의 정본을 experiment_scenarios로 명시, Pilot `E5`(E5 전용 unit) 태그 (#69 T2, ADR 0008). 필드 변경 없음 |
+| v1.1.2 | 2026-10-27 | §1 태그 예에 `GEOM-boundary`·`OCR-confusable`, §4.4 Pilot `nuisance.jsonl` sidecar (#69 T6~T8). 필드 변경 없음 |

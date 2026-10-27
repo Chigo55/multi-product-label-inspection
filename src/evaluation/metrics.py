@@ -15,7 +15,7 @@ REVIEW 처리 규칙 (ADR 0002):
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
@@ -56,8 +56,7 @@ def calibrate(
     t_ok = Q(1-r): val 정상 중 약 r이 REVIEW 이상으로 간다.
     Q는 관측값 중에서 고르는 경험 분위수(method="higher")라 val이 작으면 해상도가 거칠다.
     """
-    if bad := sorted({str(r.get("split")) for r in rows} - {"val"}):
-        raise ValueError(f"threshold는 val로만 정한다 (받은 split: {bad})")
+    _require_val(rows, "threshold")
     normal_scores = [
         s for r, s in zip(rows, scores, strict=True) if r["normal_or_defect"] == "normal"
     ]
@@ -69,6 +68,39 @@ def calibrate(
         normal_scores, [1 - normal_review_rate, 1 - normal_ng_rate], method="higher"
     )
     return float(t_ok), float(t_ng)
+
+
+def normalize(
+    fit_rows: list[dict[str, Any]],
+    fit_scores: Sequence[float],
+    rows: list[dict[str, Any]],
+    scores: Sequence[float],
+) -> list[float]:
+    """슬롯별 z-score 정규화 (§6, #69 T12). 통계는 `(product_id, label_slot)`마다 val 정상으로만 잡는다.
+
+    라벨 종류마다 정상 점수 분포가 달라 한 threshold로 묶으면 NG가 특정 슬롯에 몰린다. 슬롯별 분위수
+    threshold는 쓸 수 없다 — 슬롯당 val 정상이 약 170행이라 f=0.334%면 꼬리에 0.57건이다. 그래서 분포를
+    맞춘 뒤 제품별 공통 분위수 threshold(`calibrate`)를 쓴다. test 점수도 같은 변환을 거쳐야 하므로
+    calibrate와 따로 둔다. 분위수 rank 정규화는 쓰지 않는다 — f < 1/n이면 t_ng가 rank 최댓값 1.0에 붙어
+    NG가 나올 수 없다.
+    """
+    _require_val(fit_rows, "정규화 통계")
+    groups: dict[tuple, list[float]] = defaultdict(list)
+    for r, s in zip(fit_rows, fit_scores, strict=True):
+        if r["normal_or_defect"] == "normal":
+            groups[(r.get("product_id"), r.get("label_slot"))].append(s)
+    stats = {g: (float(np.mean(v)), float(np.std(v)) or 1.0) for g, v in groups.items()}
+    out = []
+    for r, s in zip(rows, scores, strict=True):
+        mean, std = stats[(r.get("product_id"), r.get("label_slot"))]
+        out.append((s - mean) / std)
+    return out
+
+
+def _require_val(rows: Sequence[dict[str, Any]], what: str) -> None:
+    """val이 아닌 row가 하나라도 있으면 멈춘다 — test로 정하는 경로를 코드에서 막는다 (§6)."""
+    if bad := sorted({str(r.get("split")) for r in rows} - {"val"}):
+        raise ValueError(f"{what}는 val로만 정한다 (받은 split: {bad})")
 
 
 def rate(k: int, n: int) -> dict[str, Any]:
@@ -94,21 +126,92 @@ def evaluate(rows: list[dict[str, Any]], preds: list[dict[str, Any]]) -> dict[st
         raise ValueError(f"알 수 없는 decision: {bad}")
 
     # E3 주 기준: 미등록 라벨이 붙은 정상 row가 OK로 나간 비율. decision만 쓴다 (AD 모델에도 적용)
-    unknown_dec = [
-        d for r, d in zip(rows, decision, strict=True) if r.get("is_known_label") is False
-    ]
+    unknown: dict[str, list[str]] = defaultdict(list)
+    for r, d in zip(rows, decision, strict=True):
+        if r.get("is_known_label") is False:
+            unknown[str(r.get("actual_label_id"))].append(d)
+    unknown_dec = [d for ds in unknown.values() for d in ds]
+    # 슬롯별 FPR — 한 threshold로 묶으면 NG가 특정 슬롯에 몰린다(§6 정규화). 편차 = 최댓값 - 최솟값
+    by_slot: dict[str, list[str]] = defaultdict(list)
+    for r, d in zip(rows, decision, strict=True):
+        if r["normal_or_defect"] == "normal":
+            by_slot[f"{r.get('product_id')}.{r.get('label_slot')}"].append(d)
+    slot_fpr = {k: rate(v.count(NG), len(v)) for k, v in sorted(by_slot.items())}
+    slot_values = [x["value"] for x in slot_fpr.values()]
+    # 귀속 검출(§4 보조): 불량 제품을 불량 슬롯 자체가 OK가 아닐 때만 잡았다고 센다. 같은 제품의 정상 슬롯이
+    # REVIEW/NG여서 잡힌 것은 빼므로, 과검이 많은 모델이 Product-level DER에서 유리해지는 것을 드러낸다
+    defect_units: dict[str, bool] = {}
+    for r, d in zip(rows, decision, strict=True):
+        if r["normal_or_defect"] == "defect":
+            defect_units[r["unit_id"]] = defect_units.get(r["unit_id"], False) or d != OK
+    # 행 수가 아니라 쌍·아이덴티티 수가 일반화의 표본이다 — 행 단위 CI는 "이 쌍, 이 라벨"에 대한 구간이다 (§5)
+    e5_rows, e5_dec = _e5_subset(rows, decision)
+    tiers = sorted({r["e5_tier"] for r in e5_rows})
 
     return {
         "review_policy": REVIEW_POLICY,
         **_decision_metrics(rows, decision, score),
         "defect_escape_rate_by_category": _der_by(rows, decision, "defect_category"),
         "defect_escape_rate_by_type": _der_by(rows, decision, "defect_type"),
-        "similar_label_confusion_rate": _der_by(*_e5_subset(rows, decision), "e5_tier"),
+        "false_positive_rate_by_slot": slot_fpr,
+        "slot_fpr_spread": max(slot_values) - min(slot_values) if len(slot_values) > 1 else None,
+        "similar_label_confusion_rate": _der_by(e5_rows, e5_dec, "e5_tier"),
+        "similar_label_confusion_rate_by_pair": _der_by(e5_rows, e5_dec, "e5_pair"),
+        "n_pairs": {t: len({r["e5_pair"] for r in e5_rows if r["e5_tier"] == t}) for t in tiers},
         **_identity(rows, [by_id[r["sample_id"]].get("predicted_label_id") for r in rows]),
         "unknown_label_ok_rate": rate(unknown_dec.count(OK), len(unknown_dec)),
+        "unknown_label_ok_rate_by_label": {
+            k: rate(v.count(OK), len(v)) for k, v in sorted(unknown.items())
+        },
+        "n_identities": len(unknown),
         "label_level": _decision_metrics(*_group(rows, decision, score, ("unit_id", "label_slot"))),
         "product_level": _decision_metrics(*_group(rows, decision, score, ("unit_id",))),
+        "product_detection_attributed": rate(sum(defect_units.values()), len(defect_units)),
     }
+
+
+# 제품 검토 예산 R의 격자 (§6 risk-coverage). AURC를 방법끼리 비교하려면 같은 격자여야 한다 — F 미만은 쓰지 않는다
+RC_TARGETS = (0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30)
+
+
+def label_rate(product_rate: float, n_labels: int) -> float:
+    """제품 단위 비율 → 라벨 단위 비율: 1 - (1 - R)^(1/L) (§6). 라벨 오류가 독립이라는 근사다."""
+    return 1 - (1 - product_rate) ** (1 / n_labels)
+
+
+def risk_coverage(
+    rows: list[dict[str, Any]], decide_at: Callable[[float], list[str]], floor: float
+) -> dict[str, Any]:
+    """제품 검토 예산 R 격자(`RC_TARGETS` 중 floor=F 이상)마다 제품 단위 점과 AURC (§6, #69 T10).
+
+    r 하나로 방법을 비교하면 결과가 r 선택에 좌우된다. `decide_at(R)`은 rows와 같은 순서의 판정이다 —
+    R에 맞춘 calibration은 호출자가 val에서 한다. 점마다 비율은 분자·분모·95% CI와 함께 낸다:
+    `normal_flagged`(정상 제품 중 REVIEW 이상 — R이 겨냥한 값), `review_rate`(전체 제품 중 REVIEW —
+    실제 검토 부담), `der` / `cder`(제품 DER / CDER).
+
+    AURC = 고정된 R 격자 위 제품 DER의 사다리꼴 면적 ÷ 구간 폭(구간 평균 DER). x축을 실제 Review Rate로
+    두면 적분 구간이 방법마다 달라 비교할 수 없다. 작을수록 같은 예산에서 덜 샌다.
+    """
+    points: list[dict[str, Any]] = []
+    for target in (t for t in RC_TARGETS if t >= floor):
+        units, decision, score = _group(rows, decide_at(target), [0.0] * len(rows), ("unit_id",))
+        m = _decision_metrics(units, decision, score)
+        normal = m["confusion"]["normal"]
+        points.append(
+            {
+                "product_review_target": target,
+                "normal_flagged": rate(normal[REVIEW] + normal[NG], sum(normal.values())),
+                "review_rate": m["review_rate"],
+                "der": m["defect_escape_rate"],
+                "cder": m["critical_defect_escape_rate"],
+            }
+        )
+    xy = [(p["product_review_target"], p["der"]["value"]) for p in points if p["der"]["n"]]
+    aurc = None
+    if len(xy) > 1:
+        x, y = [a for a, _ in xy], [b for _, b in xy]
+        aurc = float(np.trapezoid(y, x) / (x[-1] - x[0]))
+    return {"points": points, "aurc": aurc}
 
 
 def _decision_metrics(
@@ -213,14 +316,19 @@ def _open_set(row: dict[str, Any], label: str | None) -> str | None:
 def _e5_subset(
     rows: list[dict[str, Any]], decision: list[str]
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """`E5-<구간>` 태그가 달린 row만, 구간을 `e5_tier` 키로 붙여서 (protocol §3 Similar-label Confusion Rate)."""
+    """`E5-<구간>` 태그가 달린 row만, 구간(`e5_tier`)과 순서 없는 쌍(`e5_pair`)을 붙여서 (protocol §3)."""
     picked = [
-        (row | {"e5_tier": tag.removeprefix("E5-")}, dec)
+        (row | {"e5_tier": tag.removeprefix("E5-"), "e5_pair": _pair(row)}, dec)
         for row, dec in zip(rows, decision, strict=True)
         for tag in row.get("experiment_tags") or []
         if tag.startswith("E5-")
     ]
     return [r for r, _ in picked], [d for _, d in picked]
+
+
+def _pair(row: dict[str, Any]) -> str:
+    """(요구, 실제) 라벨을 순서 없이 — b-3→b-4와 b-4→b-3은 같은 쌍이다."""
+    return "/".join(sorted((str(row.get("expected_label_id")), str(row.get("actual_label_id")))))
 
 
 def _der_by(rows: list[dict[str, Any]], decision: list[str], key: str) -> dict[str, Any]:

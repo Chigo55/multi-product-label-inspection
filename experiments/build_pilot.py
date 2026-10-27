@@ -1,12 +1,15 @@
 """Pilot benchmark 생성 (#33, #34, #35) — Recipe → 정상·불량 이미지 + metadata.jsonl.
 
-    uv run experiments/build_pilot.py
+    uv run experiments/build_pilot.py            # pilot
+    uv run experiments/build_pilot.py pilot_dev  # 같은 Recipe, 그림만 다른 분석용 세트 (#69 T9)
 
-`datasets/registry.yaml`의 `pilot` 항목이 가리키는 root에 이미지를 쓰고, **검증기 오류가 0건일
-때만** metadata를 쓴다. 이미지도 metadata도 커밋되지 않는다 — 이 스크립트로 재생성한다.
+`datasets/registry.yaml`의 해당 항목(`pilot` / `pilot_dev`)이 가리키는 root에 이미지를 쓰고,
+**검증기 오류가 0건일 때만** metadata를 쓴다. 옆에 `nuisance.jsonl`과 생성 version을 남긴다.
+이미지도 metadata도 커밋되지 않는다 — 이 스크립트로 재생성한다.
 
-생성 결과는 Recipe와 `src/utils/pilot.py`만으로 결정된다(샘플별 seed = sha256(sample_id)).
-그래서 registry의 `sha256`은 원본 아카이브 대신 **Recipe 파일 해시**다. 해시가 달라지면
+생성 결과는 Recipe, `src/utils/pilot.py`, registry 항목의 `namespace`·`lots`로 결정된다
+(샘플별 seed = sha256(sample_id), sample_id는 namespace로 시작한다).
+그래서 registry의 `sha256`은 원본 아카이브 대신 **Recipe 파일 해시**(줄바꿈 LF 기준)다. 해시가 달라지면
 데이터가 달라진 것이므로 `version`을 올리라고 여기서 막는다.
 
 불량 unit은 정상 unit 뒤에 따로 붙고, unit마다 Label Slot 한 곳만 불량이다 (#34).
@@ -15,7 +18,7 @@ E5 전용 unit은 그 뒤에 test로만 붙는다 (#35).
 
 from __future__ import annotations
 
-import hashlib
+import sys
 from collections import Counter
 
 import yaml
@@ -23,18 +26,24 @@ from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 �
 
 from src.utils.metadata import find_errors, write_jsonl
 from src.utils.paths import SHARED_ROOT
-from src.utils.pilot import E5_TIERS, build, e5_pairs
+from src.utils.pilot import (
+    BUILT_VERSION_FILE,
+    E5_TIERS,
+    NUISANCE_FILE,
+    build,
+    e5_pairs,
+    text_sha256,
+)
 
 REGISTRY_PATH = REPO_ROOT / "datasets" / "registry.yaml"
-NAME = "pilot"
 
 
-def main() -> None:
-    entry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))[NAME]
+def main(name: str) -> None:
+    entry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))[name]
     recipe_path = REPO_ROOT / entry["recipe"]
     recipe_bytes = recipe_path.read_bytes()
 
-    digest = hashlib.sha256(recipe_bytes).hexdigest()
+    digest = text_sha256(recipe_bytes)
     if digest != entry["sha256"]:
         raise ValueError(
             f"Recipe가 registry에 등록된 내용과 다르다 — 데이터가 달라진다.\n"
@@ -46,17 +55,20 @@ def main() -> None:
 
     recipe = yaml.safe_load(recipe_bytes.decode("utf-8"))
     root = SHARED_ROOT / entry["root"]
-    rows = build(recipe, root)
+    rows, nuisance = build(recipe, root, entry.get("namespace", "custom_pilot"), entry.get("lots"))
 
     if errors := find_errors(rows, image_root=root):
         raise ValueError(
-            f"{NAME}: 검증 실패 {len(errors)}건 — metadata를 쓰지 않는다: {errors[:5]}"
+            f"{name}: 검증 실패 {len(errors)}건 — metadata를 쓰지 않는다: {errors[:5]}"
         )
     out = SHARED_ROOT / entry["metadata"]
     write_jsonl(rows, out)
+    # 실제로 뽑힌 촬영 조건 (#69 T8). schema 필드가 아니라 sample_id 키의 별도 파일이다
+    write_jsonl(nuisance, root / NUISANCE_FILE)
+    (root / BUILT_VERSION_FILE).write_text(entry["version"], encoding="utf-8")
     report(recipe, rows)
     print(
-        f"[{NAME} v{entry['version']}] {len(rows)} rows → {out.relative_to(SHARED_ROOT).as_posix()}"
+        f"[{name} v{entry['version']}] {len(rows)} rows → {out.relative_to(SHARED_ROOT).as_posix()}"
     )
 
 
@@ -116,4 +128,4 @@ def report(recipe: dict, rows: list[dict]) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1] if len(sys.argv) > 1 else "pilot")

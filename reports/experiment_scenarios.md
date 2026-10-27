@@ -1,6 +1,6 @@
-# Experiment Scenarios v1.3
+# Experiment Scenarios v1.9
 
-> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-09-25 (Week 3) / 이슈: #31, #33, #34, #35
+> 작성일: 2026-09-21 (Week 2) / 최종 수정: 2026-10-27 / 이슈: #31, #33, #34, #35, #69
 > 기준 문서: `docs/multi_product_multi_label_industrial_inspection_research_summary.md` §30
 > RQ 매핑: `reports/research_questions.md` / 지표 정의: `reports/evaluation_protocol.md` / 분할: `datasets/schema.md` §4
 >
@@ -13,6 +13,9 @@
 - 비율 지표는 분자/분모 + Clopper-Pearson 양측 95% 구간을 함께 보고한다 (ADR 0005).
 - 3-level(Defect / Label / Product)로 보고한다. public track은 Label = Product다.
 - 랜덤성이 있으면(few-shot 샘플링 등) 최소 3 seed, 평균 ± 표준편차.
+- **Week 5~16 보고 수치와 실패 분석(Failure Gallery, Research Gap)은 `pilot_dev`에서 낸다.** `pilot`의 test는 봉인이고
+  (registry `test_sealed`), config `experiment.final_report: true`일 때만 열린다 — 첫 개봉 Week 18 (#69 T9).
+  `pilot_dev`는 같은 Recipe·변환기로 seed 네임스페이스(`custom_pilot_dev/`)와 LOT만 다르게 만든 세트다.
 - "escape 0건"을 주장하려면 표본이 먼저 있어야 한다. 0건일 때 95% 상한이 **5% 이하면 72건, 1% 이하면 368건** 이상 필요하다.
 
 ## 요약
@@ -29,6 +32,27 @@
 > 현재 받아 둔 데이터(MVTec AD)로 바로 할 수 있는 것은 **E1과 결함 유형별 DER**이다. E2는 public few-shot 설정으로 일부 가능하다.
 > E3는 Pilot benchmark(#33)의 미등록 라벨 row로, E4의 seen/unseen 비교는 synthetic defect(#34)로, E5는 난이도 구간(#35)으로 가능해졌다.
 
+## 평가 범위
+
+시나리오마다 test를 아래 범위로 잘라 따로 평가한다(ADR 0008, evaluation_protocol §4). **unit 단위로 고르고 한 unit의
+row를 쪼개지 않는다.** 코드 정본은 `src/evaluation/scenarios.py`이고, MLflow 지표 이름에 `e1_` … 접두사가 붙는다.
+
+| ID | 범위에 드는 unit | 쓰는 결과 |
+|---|---|---|
+| E1 | 미등록 라벨이 없고 모든 row가 `is_known_defect=true`이며 덧붙인 unit(`E5`·`GEOM-boundary`·`OCR-confusable` 태그)이 아닌 unit | F 판단, 헤드라인 DER·CDER·FPR·Review Rate |
+| E3 | 미등록 라벨(`is_known_label=false`)이 하나라도 있는 unit | Unknown Label OK Rate, Detection·Forced Rate |
+| E4 | 미등록 라벨이 없고 덧붙인 unit이 아닌 unit — E1에 hold-out 유형 unit을 더한 것. hold-out 유형이 하나도 없으면(public) 비운다 | 유형별 DER로 seen vs unseen |
+| E5 | `E5-<구간>` 태그 row가 있는 unit (무작위 바꿔치기 + 전용 unit + `revision_mismatch`) | 구간별 Similar-label Confusion Rate |
+| `GEOM-boundary` | 위치·각도가 허용 오차의 0.9~1.2배인 경계 unit (Pilot v0.4, test). 정답은 실제 값 — 정상과 불량이 섞인다 | E1 보조(RQ2·RQ6): 경계에서 DER·FPR·Review Rate — REVIEW가 하는 일 |
+| `OCR-confusable` | 혼동 문자(0/O, 1/I, 5/S, 8/B, 2/Z, 6/G) 치환 `ocr_mismatch` unit (Pilot v0.4, test) | E1·E5 보조(RQ3): OCR이 실제로 틀리는 글자에서의 DER |
+
+- 덧붙인 unit(E5 전용, `GEOM-boundary`, `OCR-confusable`)은 E1에서 뺀다 — 넣으면 E1의 불량 구성이 그쪽으로 쏠린다.
+  무작위로 생긴 바꿔치기와 `revision_mismatch`(유형당 72 unit, 다른 유형과 같은 수)는 E1에 남는다.
+  그래서 E1의 `ocr_mismatch`에는 혼동 문자 치환이 없다 — 그 몫은 `OCR-confusable` 결과로 따로 본다.
+- 덧붙인 unit 묶음은 Scenario가 아니라 위 시나리오의 **보조 범위**다. 결과 키와 MLflow 접두사는 태그 이름을 쓴다.
+- public track은 `is_known_label`이 비어 있고 태그가 없으므로 전부 E1이다. 범위가 빈 시나리오는 결과에 없다.
+- E2·E6는 해당 데이터(reference k-shot, shift subset)가 생길 때 범위를 추가한다.
+
 ---
 
 ## E1 — Seen Label
@@ -43,6 +67,8 @@
   **Pilot의 F = 1%** (#33 확정). 정본은 Recipe `configs/recipes/pilot.yaml`의
   `product_false_reject_target`이고, 제품별 L에서 f를 역산한다 — A·B(L=3) f=0.334%, C(L=4) f=0.251%.
   분위수 해상도를 확보하려고 val 정상을 제품당 360~480 row로 잡았다.
+  **제품 단위 검토 예산 R = 5%**(#69 결정 3)도 Recipe `product_review_target`이고 같은 식으로 라벨 단위 r을 역산한다.
+  방법끼리는 R 하나가 아니라 risk–coverage 곡선과 AURC로도 비교한다 (evaluation_protocol §6).
 - **주의**: public track은 CDER이 N/A다 (schema §3.1).
 
 ## E2 — Few-shot New Label
@@ -92,16 +118,29 @@
 
   | 구간 | 규칙 | Pilot 쌍 수 | 예 |
   |---|---|---:|---|
-  | Easy | layout·palette·font 중 하나라도 다르다 | 51 | a-1 / c-1 |
+  | Easy | layout·palette·font 중 하나라도 다르다 | 59 | a-1 / c-1 |
   | Extreme | 겉모습과 인쇄 문자가 전부 같다 (바코드만 다름) | 1 | b-3 / b-4 |
-  | Hard | 같은 field·같은 글자 수, 다른 글자 ≤ 2개 | 3 | a-2 / a-4, a-3 / b-3, a-3 / b-4 |
-  | Medium | 나머지 — 겉모습은 같고 내용이 여러 곳 다르다 | 11 | a-2 / b-2 |
+  | Hard | 같은 field·같은 글자 수, 다른 글자 ≤ 2개 | 5 | a-2 / a-4, a-3 / b-3, a-3 / b-4, **a-2 / a-5**(바코드 같음), a-4 / a-5 |
+  | Medium | 나머지 — 겉모습은 같고 내용이 여러 곳 다르다 | 13 | a-2 / b-2 |
+
+  쌍 수는 Pilot v0.4 카탈로그 기준이다. a-5(v0.4)가 든 쌍에는 E5 전용 unit이 없다 — 전용 unit은 v0.3 카탈로그로
+  배정해 그림을 유지한다. 대신 a-2 / a-5는 `revision_mismatch` 72 unit(test)이 E5-hard로 들어온다.
 
 - **분할**: 난이도별 test subset을 `experiment_tags`(`E5-easy` … `E5-extreme`)로 표시한다. 바꿔치기 불량
-  (`wrong_label` / `wrong_product_label`)은 전부 (요구, 실제) 쌍의 구간 태그를 받는다. 무작위 바꿔치기로는
+  (`wrong_label` / `wrong_product_label` / `revision_mismatch`)은 전부 (요구, 실제) 쌍의 구간 태그를 받는다. 무작위 바꿔치기로는
   Extreme(1쌍)이 거의 생기지 않으므로 **구간마다 전용 unit 72개를 test에 추가**한다 (escape 0건이면 95% 상한 ≤ 5%).
+  전용 unit은 모든 row에 `E5` 태그를 더 단다(Pilot v0.4~) — E1 범위에서 빼기 위해서다.
 - **지표**: 난이도별 Similar-label Confusion Rate(= 구간별 바꿔치기 불량의 DER, evaluation_protocol §3), modality ablation(visual only → +OCR → +Barcode → +Context).
-- **성공 기준**: Extreme 구간에서 visual only는 구별하지 못하고 OCR/Barcode를 더하면 구별한다 — 가설 검증형.
+  구간마다 **쌍 수(`n_pairs`)와 쌍별 분해**를 함께 보고한다(§5). Pilot은 Hard 5쌍·Extreme 1쌍이라 Extreme 결과는
+  "b-3/b-4에서는"이라고만 말할 수 있다.
+- **Main benchmark 쌍 수 목표** (Week 17): 구간마다 서로 다른 쌍 ≥ 5, E3 미등록 아이덴티티 ≥ 5 — 숫자는 `[시작 시 확정]`.
+- **성공 기준** (v1.9, #69 T16): **"외관만으로 구별할 수 있는가"는 해상도와 blur의 함수다.** 고정 해상도 하나에서
+  "visual only는 Extreme에서 실패"를 검증하지 않는다 — b-3/b-4는 깨끗하게 렌더하면 라벨 픽셀의 5.0%가 다르고 차이가
+  바코드 영역(68×32 px)에 몰려 있어, 템플릿 차분이나 고해상도 patch AD가 256px에서 Extreme을 잡을 수 있다(2026-10-27 측정).
+  대신 ROI 128/256/512px × blur 3단계에서 visual 방법과 디코딩 방법(OCR, 바코드)의 구간별 Confusion Rate가
+  **갈라지는 지점**을 찾는다. 성공 = 그 경계가 CI와 함께 재현된다(seed ≥ 3). 설계: `configs/e5_resolution_sweep.yaml`.
+  기존 데이터도 `nuisance.jsonl`의 blur 반경 구간별로 나눠 같은 비교를 낸다.
+  Hard 구간의 a-2 / a-5는 바코드가 같아 **OCR만** 가른다 — modality ablation에서 OCR의 기여를 바코드와 분리해 본다.
 
 ## E6 — Domain Shift
 
@@ -110,6 +149,8 @@
 - **지표**: 요인별 DER·FPR과 in-domain 대비 변화량. Review Rate 변화.
 - **성공 기준**: shift 조건에서 늘어난 불량이 `OK`로 새지 않고 `REVIEW`로 흡수된다 — DER 증가가 in-domain
   신뢰구간 안이고 Review Rate 증가는 상한 이내. 상한 숫자 `[시작 시 확정, Week 17]`.
+- **Pilot-Real** (#69 T14, Week 16 촬영): 같은 Recipe의 라벨을 인쇄·부착·촬영한 실물 세트(`E6-real`, 60 unit).
+  렌더 대비 실물의 DER·FPR·Review Rate 차이를 보조 결과로 낸다. 프로토콜 `datasets/pilot_real.md`.
 - **주의**: 조명·배경·반사는 `experiment_tags`로 표시한다 (schema §4.4). 모든 test LOT은 이미 새 LOT이므로
   `E6-lot`은 큰 LOT 변화를 뜻한다.
 
@@ -124,3 +165,9 @@
 | v1.1 | 2026-09-25 | E1의 Pilot 과검률 목표 **F = 1%** 확정(#33). 정본은 `configs/recipes/pilot.yaml`. E3·E5 입력이 되는 Pilot benchmark가 실제로 생성됨 |
 | v1.2 | 2026-09-25 | Pilot에 synthetic defect 10종 추가(#34). E4 Pilot의 hold-out 유형은 `unknown_visual`(val에 없음, `is_known_defect=false`), 본 유형은 나머지 9종 |
 | v1.3 | 2026-09-25 | E5 구간 규칙 확정, Pilot에 구간별 전용 unit 72개(#35). Confusion Rate = 구간별 바꿔치기 DER |
+| v1.4 | 2026-10-27 | **평가 범위** 절 추가(ADR 0008, #69 T2): 시나리오별 unit 범위, E1은 미등록 라벨·hold-out 유형·E5 전용 unit 제외(결정 2). E5 전용 unit에 `E5` 태그(Pilot v0.4) |
+| v1.5 | 2026-10-27 | Pilot v0.4(#69 T5~T7·T9): 공통 규칙에 `pilot_dev`·test 봉인, 평가 범위에 `GEOM-boundary`·`OCR-confusable` 묶음과 E1·E4 제외, E5에 `revision_mismatch`와 OCR-only 쌍 a-2 / a-5, 구간별 쌍 수 갱신. 덧붙인 unit 묶음은 Scenario의 보조 범위(RQ 표시) |
+| v1.6 | 2026-10-27 | E1에 제품 검토 예산 R=5%와 risk–coverage·AURC 비교 (#69 T10) |
+| v1.7 | 2026-10-27 | E5 쌍 수·쌍별 분해 보고, Main benchmark 구간별 쌍 수 목표(쌍 ≥ 5, E3 아이덴티티 ≥ 5, 시작 시 확정) (#69 T11) |
+| v1.8 | 2026-10-27 | E6에 Pilot-Real 보조 결과(`E6-real`, 프로토콜 `datasets/pilot_real.md`) (#69 T14, 결정 6) |
+| v1.9 | 2026-10-27 | E5 성공 기준을 "외관 구별 가능성은 해상도·blur의 함수"로 재정의, ROI 128/256/512 × blur 3단계 sweep 설계(`configs/e5_resolution_sweep.yaml`), sidecar blur 구간 분해 (#69 T16) |

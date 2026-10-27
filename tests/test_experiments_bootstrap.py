@@ -51,3 +51,11 @@ def test_every_experiment_script_imports_bootstrap() -> None:
         if script.name.startswith("_"):
             continue
         assert "_bootstrap import" in script.read_text(encoding="utf-8"), script.name
+
+
+def test_every_dataset_script_guards_sealed_test() -> None:
+    """config의 dataset을 읽는 스크립트는 전부 open_test()를 거친다 — 봉인된 pilot test (#69 T9 리뷰)."""
+    for script in EXPERIMENTS.glob("*.py"):
+        text = script.read_text(encoding="utf-8")
+        if 'cfg["dataset"]' in text and "registry" in text.lower():
+            assert "open_test(" in text, script.name

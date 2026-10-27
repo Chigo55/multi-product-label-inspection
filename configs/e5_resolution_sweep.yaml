@@ -1,0 +1,44 @@
+# ============================================================
+# E5 해상도·blur sweep — 설계 (#69 T16). base.yaml에서 파생. 실행 스크립트는 E5 시작 시(Week 12) 만든다.
+#
+# 가설(experiment_scenarios v1.9 E5): "외관만으로 Extreme 쌍을 구별할 수 있는가"는 해상도와 blur의 함수다.
+# b-3/b-4는 깨끗하게 렌더하면 라벨 픽셀의 5.0%가 다르고 차이가 바코드 영역(68×32 px)에 몰려 있다
+# (2026-10-27 측정) — 템플릿 차분·고해상도 patch AD가 256px에서 Extreme을 잡을 수 있다. 그래서 고정 해상도
+# 하나로 "visual only는 Extreme에서 실패"를 검증하지 않고, visual 방법과 디코딩 방법의 구별 성능이 갈라지는
+# 지점(ROI × blur)을 찾는다.
+# ============================================================
+
+experiment:
+  name: e5_resolution_sweep
+  research_question: RQ3
+  scenario: E5
+  seed: 42
+  final_report: false
+
+dataset:
+  name: pilot_dev                # 분석용. 각 조건은 같은 Recipe에 roi_size·blur만 바꿔 scratch에 새로 생성한다
+  split: test
+  subset: E5                     # evaluate_scenarios()의 E5 범위 (+ 같은 범위의 정상 unit으로 calibration은 val)
+
+sweep:
+  roi_size: [128, 256, 512]      # px. 256이 Pilot 기본. PX_PER_MM도 같은 비율로 바꿔 라벨이 ROI에서 차지하는 비율을 유지한다
+  blur_px: [0.9, 1.6, 2.4]       # NUISANCE blur 반경 상한. 0.9가 Pilot 기본 (src/utils/pilot.py NUISANCE)
+  methods:                       # 같은 판정 규칙(val 분위수 threshold, R=5%)으로 비교
+    - template_diff              # visual: 등록 템플릿과의 정렬 후 차분
+    - patch_ad                   # visual: PatchCore 계열 patch score
+    - ocr                        # decoding: field 판독 (#65)
+    - barcode                    # decoding: 두 디코더 합의 (src/models/barcode.py)
+
+report:
+  - similar_label_confusion_rate_by_tier   # 구간별, 쌍 수(n_pairs)와 함께 (protocol §5)
+  - similar_label_confusion_rate_by_pair
+  - barcode_result_rate                    # UNREADABLE·CONFLICT 비율 — blur가 커지면 디코딩도 무너지는 지점
+
+# 기존 데이터도 나눠 본다: pilot_dev의 nuisance.jsonl(blur_radius)을 3구간으로 잘라 E5 결과를 blur별로 낸다 (#69 T8)
+existing_split:
+  sidecar: nuisance.jsonl
+  key: blur_radius
+  bins: [0.2, 0.43, 0.67, 0.9]
+
+tracking:
+  experiment_name: e5_resolution_sweep

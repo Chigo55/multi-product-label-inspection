@@ -1,5 +1,5 @@
 # ============================================================
-# base.yaml — 모든 실험 config의 원형 (v0.3, Week 4: latency 측정 조건 #38)
+# base.yaml — 모든 실험 config의 원형 (v0.4, #69 T9: pilot test 봉인 → 기본 데이터셋 pilot_dev)
 # 사용법: 이 파일을 복제해서 patchcore.yaml / efficientad.yaml /
 #         anomalydino.yaml / dinov2_prototype.yaml 등으로 만든다.
 # 규칙: 실험에 쓰인 config는 MLflow artifact로 그대로 저장한다.
@@ -13,9 +13,12 @@ experiment:
   scenario: null                 # 예: E1
   seed: 42
   notes: ""
+  # true일 때만 봉인된 test(registry `test_sealed`)를 연다 — run에 test_opened=true가 남는다.
+  # Week 5~16 보고 수치는 pilot_dev 기준이고, pilot test는 Week 18에 처음 연다 (#69 T9)
+  final_report: false
 
 dataset:
-  name: pilot
+  name: pilot_dev                # 분석·방향 결정용. pilot은 최종 보고(final_report)에만
   split: test
   root: datasets/custom          # public이면 datasets/public
   metadata: null                 # 예: datasets/custom/metadata.jsonl

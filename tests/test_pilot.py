@@ -19,8 +19,20 @@ from typing import Any
 import pytest
 import yaml
 
-from src.utils.metadata import find_errors
-from src.utils.pilot import E5_TIERS, e5_pairs, render_label, render_roi, rng_for, similarity_tier
+from src.utils.metadata import find_errors, read_jsonl
+from src.utils.pilot import (
+    BUILT_VERSION_FILE,
+    E5_TIERS,
+    NUISANCE_FILE,
+    build,
+    check_built_version,
+    e5_pairs,
+    render_label,
+    render_roi,
+    rng_for,
+    similarity_tier,
+    text_sha256,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECIPE_PATH = REPO_ROOT / "configs" / "recipes" / "pilot.yaml"
@@ -95,6 +107,21 @@ def test_barcode_only_pair_is_pixel_identical_except_bars(recipe: dict[str, Any]
     assert render_label(b3).tobytes() == render_label(b4).tobytes()
 
 
+def test_ocr_only_pair_shares_barcode(recipe: dict[str, Any]) -> None:
+    """a-2 / a-5: 바코드가 같고 인쇄 REV만 다르다 — 바코드로는 못 가르고 OCR만 가른다 (#69 T5)."""
+    a2, a5 = recipe["labels"]["a-2"], recipe["labels"]["a-5"]
+    assert similarity_tier(a2, a5) == "hard"
+    assert a2["barcode"] == a5["barcode"] and a5["revision_of"] == "a-2"
+
+
+def test_new_labels_belong_to_a_revision(recipe: dict[str, Any]) -> None:
+    """카탈로그에만 있는 라벨은 owner가 없어 배정에서 KeyError가 난다 (#69 T5)."""
+    used = {
+        i for p in recipe["products"].values() for s in p["revisions"].values() for i in s.values()
+    }
+    assert set(recipe["labels"]) == used
+
+
 def test_unknown_labels_exist(recipe: dict[str, Any]) -> None:
     unknown = [i for i, s in recipe["labels"].items() if not s.get("known", True)]
     assert unknown, "E3용 미등록 라벨이 없다"
@@ -150,21 +177,61 @@ def test_render_is_deterministic_per_sample_id(recipe: dict[str, Any]) -> None:
     spec = recipe["labels"]["a-2"]
 
     def once() -> bytes:
-        return render_roi(
-            spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("x/slot-1")
-        ).tobytes()
+        return render_roi(spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("x/slot-1"))[
+            0
+        ].tobytes()
 
     assert once() == once()
-    other = render_roi(
-        spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("y/slot-1")
-    ).tobytes()
+    other = render_roi(spec, "brushed_metal", (64, 64), (0.3, -0.2), 1.0, rng_for("y/slot-1"))[
+        0
+    ].tobytes()
     assert once() != other, "sample_id가 달라도 같은 그림이면 정상 변이가 없는 것이다"
 
 
+# Pilot v0.3 생성기(b977354)에서 계산한 render_roi 픽셀 sha256 — Windows·Linux가 같은 값이다.
+# 새 코드끼리 비교하는 test_v03_units_are_unchanged는 난수 소비 순서가 바뀐 것을 못 잡는다(양쪽이 같이 바뀐다).
+V03_RENDER_SHA256 = (
+    "bbfb8e36a582ed6e5ab932107396bd58a55214ea72b3d46abbe7cdde29d58d9a",
+    "05cc5d2493bbed8fe822fd2e14573f7ff0a43fb0d4e7eef35e9fdc48293a3672",
+    "ad564b85275c0ae179150ad77c588b21f38898a4572bf2af5de8434abe7a78dd",
+)
+
+
+def test_render_matches_v03_generator(recipe: dict[str, Any]) -> None:
+    """그림 생성(난수 소비 순서 포함)이 v0.3과 바이트까지 같다 (#69 공통 규칙 4, T8)."""
+    labels = recipe["labels"]
+    cases = [
+        (labels["a-1"], "brushed_metal", (0.3, -0.2), 1.0, "custom_pilot/A/test/00000/slot-1"),
+        (labels["b-4"], "plastic_dark", (-1.1, 0.4), -2.5, "custom_pilot/B/val/00321/slot-3"),
+        (None, "carton", (0.0, 0.0), 0.0, "custom_pilot/C/test/00999/slot-4"),
+    ]
+    got = tuple(
+        hashlib.sha256(render_roi(s, b, (256, 256), o, t, rng_for(i))[0].tobytes()).hexdigest()
+        for s, b, o, t, i in cases
+    )
+    assert got == V03_RENDER_SHA256
+
+
 def test_registry_hash_matches_recipe() -> None:
-    """registry의 sha256은 Recipe 파일 해시다 (원본 아카이브가 없으므로). 어긋나면 build가 막는다."""
+    """registry의 sha256은 Recipe 파일 해시다 (원본 아카이브가 없으므로, 줄바꿈 LF 기준). 어긋나면 build가 막는다."""
     entry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))["pilot"]
-    assert entry["sha256"] == hashlib.sha256(RECIPE_PATH.read_bytes()).hexdigest()
+    assert entry["sha256"] == text_sha256(RECIPE_PATH.read_bytes())
+
+
+def test_check_built_version(tmp_path: Path) -> None:
+    """registry version과 생성된 metadata의 version이 다르면 멈춘다 — 기록이 없어도 (#69 T3 리뷰)."""
+    with pytest.raises(ValueError, match="기록 없음"):
+        check_built_version(tmp_path, "0.4")
+    (tmp_path / BUILT_VERSION_FILE).write_text("0.3", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"v0.3로 생성"):
+        check_built_version(tmp_path, "0.4")
+    check_built_version(tmp_path, "0.3")
+
+
+def test_text_sha256_ignores_line_endings() -> None:
+    """Windows 체크아웃(CRLF)과 Linux(LF)가 같은 Recipe에 같은 해시를 내야 한다 (#69 T1)."""
+    lf = hashlib.sha256(b"a: 1\nb: 2\n").hexdigest()
+    assert text_sha256(b"a: 1\r\nb: 2\r\n") == text_sha256(b"a: 1\nb: 2\n") == lf
 
 
 # ------------------------------------------------------------
@@ -197,12 +264,12 @@ def test_every_tier_has_pairs(recipe: dict[str, Any]) -> None:
 
 
 def test_swap_rows_carry_their_tier_tag(pilot_small: Small) -> None:
-    """바꿔치기 불량은 전부, 그리고 그것만 E5 태그를 받는다. 태그는 (요구, 실제) 쌍의 구간이다."""
+    """바꿔치기 불량(revision_mismatch 포함)은 전부, 그리고 그것만 E5 태그를 받는다. 태그는 (요구, 실제) 쌍의 구간이다."""
     recipe, rows, _ = pilot_small
     labels = recipe["labels"]
     for r in rows:
         e5 = [t for t in r["experiment_tags"] if t.startswith("E5-")]
-        if r["defect_type"] in ("wrong_label", "wrong_product_label"):
+        if r["defect_type"] in ("wrong_label", "wrong_product_label", "revision_mismatch"):
             tier = similarity_tier(labels[r["expected_label_id"]], labels[r["actual_label_id"]])
             assert e5 == [f"E5-{tier}"]
         else:
@@ -217,6 +284,26 @@ def test_each_tier_gets_its_dedicated_units(pilot_small: Small) -> None:
         assert sum(f"E5-{tier}" in r["experiment_tags"] and r["split"] == "test" for r in rows) >= n
 
 
+def test_dedicated_units_are_tagged_e5(pilot_small: Small) -> None:
+    """E5 전용 unit은 모든 row에 `E5` 태그가 있다 — E1에서 뺄 수 있어야 한다 (#69 T2, 결정 2).
+
+    무작위로 생긴 바꿔치기 unit은 `E5-<구간>`만 있고 `E5`는 없다.
+    """
+    recipe, rows, _ = pilot_small
+    units: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        units.setdefault(r["unit_id"], []).append(r)
+    tagged = [rs for rs in units.values() if any("E5" in r["experiment_tags"] for r in rs)]
+    assert len(tagged) == recipe["build"]["e5_units_per_tier"] * len(E5_TIERS)
+    assert all("E5" in r["experiment_tags"] for rs in tagged for r in rs)
+    random_swaps = [
+        rs
+        for rs in units.values()
+        if any(t.startswith("E5-") for r in rs for t in r["experiment_tags"]) and rs not in tagged
+    ]
+    assert random_swaps, "일반 불량 unit의 무작위 바꿔치기는 E1에 남는다"
+
+
 def test_extreme_rows_differ_only_in_barcode(pilot_small: Small) -> None:
     _, rows, _ = pilot_small
     extreme = [r for r in rows if "E5-extreme" in r["experiment_tags"]]
@@ -224,3 +311,51 @@ def test_extreme_rows_differ_only_in_barcode(pilot_small: Small) -> None:
     for r in extreme:
         assert r["actual_text"] == r["expected_text"]
         assert r["actual_barcode"] != r["expected_barcode"]
+
+
+def test_revision_mismatch_attaches_the_older_revision(pilot_small: Small) -> None:
+    """구 revision 라벨(a-2)을 새 revision 자리(a-5)에 붙인다. 바코드가 같은 E5-hard 쌍이다."""
+    _, rows, _ = pilot_small
+    found = [r for r in rows if r["defect_type"] == "revision_mismatch"]
+    assert {r["split"] for r in found} == {"val", "test"}
+    for r in found:
+        assert (r["expected_label_id"], r["actual_label_id"]) == ("a-5", "a-2")
+        assert r["actual_barcode"] == r["expected_barcode"] and r["defect_severity"] == "CRITICAL"
+        assert r["experiment_tags"] == ["E5-hard"]
+
+
+def test_v03_units_are_unchanged(
+    pilot_small: Small, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """v0.4 추가분(`since` 라벨, 그 revision, v04 블록)을 빼고 만든 결과가 v0.4 빌드의 앞부분과
+    metadata·이미지 바이트까지 같다 — 새 unit은 뒤에 붙고 기존 unit을 흔들지 않는다 (#69 공통 규칙 4).
+    """
+    small, rows, root = pilot_small
+    old = copy.deepcopy(small)
+    old["labels"] = {k: v for k, v in old["labels"].items() if "since" not in v}
+    for p in old["products"].values():
+        p["revisions"] = {
+            r: s for r, s in p["revisions"].items() if set(s.values()) <= set(old["labels"])
+        }
+    del old["build"]["v04"]
+    old_root = tmp_path_factory.mktemp("pilot_small_v03")
+    old_rows, _ = build(old, old_root)
+
+    by_id = {r["sample_id"]: r for r in rows}
+    assert len(rows) > len(old_rows)
+    for r in old_rows:
+        assert by_id[r["sample_id"]] == r
+        assert (root / r["image_path"]).read_bytes() == (old_root / r["image_path"]).read_bytes()
+
+
+def test_nuisance_sidecar_has_one_row_per_sample(pilot_small: Small) -> None:
+    """실제로 뽑힌 촬영 조건 (#69 T8). sample_id 키, metadata와 행 수가 같고 위치도 metadata와 맞는다."""
+    _, rows, root = pilot_small
+    sidecar = {x["sample_id"]: x for x in read_jsonl(root / NUISANCE_FILE)}
+    assert sidecar.keys() == {r["sample_id"] for r in rows}
+    for r in rows:
+        x = sidecar[r["sample_id"]]
+        assert 0.2 <= x["blur_radius"] <= 0.9 and len(x["warp_px"]) == 4
+        if r["actual_position"]:
+            dx = r["actual_position"]["x"] - r["expected_position"]["x"]
+            assert abs(dx - x["offset_mm"][0]) < 1e-3

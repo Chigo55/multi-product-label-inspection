@@ -1,0 +1,19 @@
+# ============================================================
+# Week 5 — 바코드 판독률 점검 (#66, #69 T3). base.yaml에서 파생.
+# Classical baseline(#67) 전에 6자 Code128이 256px ROI에서 읽히는지, 어느 디코더 조합으로
+# 판독 규칙(src/models/barcode.py)을 만들지 정한다. 점검용 run이다(citable=false).
+# ============================================================
+
+experiment:
+  name: week05_barcode_check
+  research_question: RQ3         # Barcode decode가 유사 라벨 구별 근거가 되려면 먼저 읽혀야 한다
+  scenario: E5                   # E5-extreme(b-3/b-4)은 바코드로만 구별된다
+  seed: null                     # 난수 없음
+  notes: "val 정상 전체 + val barcode_mismatch에서 디코더 3조건의 레이아웃별 판독률·오판독, 합의 규칙 결과"
+
+dataset:
+  name: pilot_dev                # Week 5~16 보고 수치는 pilot_dev (#69 규칙 7)
+  split: val                     # threshold와 같은 규칙: 규칙은 val에서 정한다. test는 보지 않는다
+
+tracking:
+  experiment_name: week05_barcode_check

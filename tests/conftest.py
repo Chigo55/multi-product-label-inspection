@@ -9,7 +9,8 @@ from typing import Any
 import pytest
 import yaml
 
-from src.utils.pilot import build
+from src.utils.metadata import write_jsonl
+from src.utils.pilot import NUISANCE_FILE, build
 
 RECIPE_PATH = Path(__file__).resolve().parents[1] / "configs" / "recipes" / "pilot.yaml"
 
@@ -28,5 +29,12 @@ def pilot_small(
     small["build"]["unknown_units_per_product"] = 2
     small["build"]["defects"] |= {"val_units_per_type": 1, "test_units_per_type": 2}
     small["build"]["e5_units_per_tier"] = 2
+    small["build"]["v04"] = {
+        "revision_mismatch": {"val": 1, "test": 2},
+        "geom_boundary": 6,
+        "ocr_confusable": 3,
+    }
     root = tmp_path_factory.mktemp("pilot_small")
-    return small, build(small, root), root
+    rows, nuisance = build(small, root)
+    write_jsonl(nuisance, root / NUISANCE_FILE)  # build_pilot.py와 같이 (#69 T8)
+    return small, rows, root

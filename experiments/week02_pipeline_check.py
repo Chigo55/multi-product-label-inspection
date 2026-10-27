@@ -24,15 +24,19 @@ import yaml
 from _bootstrap import REPO_ROOT  # sys.path + UTF-8 stdout. 첫 import여야 한다
 
 from src.evaluation.latency import Stage, environment, measure, summarize
-from src.evaluation.metrics import calibrate, decide, evaluate
+from src.evaluation.metrics import REVIEW_POLICY, calibrate, decide, risk_coverage
+from src.evaluation.scenarios import evaluate_scenarios
 from src.utils.metadata import find_errors, read_jsonl
 from src.utils.paths import SHARED_ROOT
 from src.utils.tracking import (
     flat_metrics,
+    flat_scenario_metrics,
     git_commit,
     git_is_dirty,
+    open_test,
     start_experiment,
     write_predictions,
+    write_risk_coverage,
 )
 
 CONFIG_PATH = REPO_ROOT / "configs" / "week02_pipeline_check.yaml"
@@ -71,6 +75,9 @@ def main() -> None:
     cfg = load_yaml(CONFIG_PATH)
     ds = cfg["dataset"]
     reg = load_yaml(REGISTRY_PATH)[ds["name"]]
+    test_tags = open_test(
+        reg, cfg
+    )  # 봉인된 test(registry test_sealed)는 final_report일 때만 (#69 T9)
 
     rows = [
         r for r in read_jsonl(SHARED_ROOT / reg["metadata"]) if r["product_id"] == ds["category"]
@@ -89,8 +96,16 @@ def main() -> None:
     val_scores = [p["anomaly_score"] for p in score_all(val, rng)]
     t_ok, t_ng = calibrate(val, val_scores, dec["normal_ng_rate"], dec["normal_review_rate"])
     n_val_normal = sum(r["normal_or_defect"] == "normal" for r in val)
-    preds = [p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)} for p in score_all(test, rng)]
-    metrics = evaluate(test, preds)
+    scored = score_all(test, rng)
+    preds = [p | {"decision": decide(p["anomaly_score"], t_ok, t_ng)} for p in scored]
+    metrics = evaluate_scenarios(test, preds)  # public track은 E1뿐이다
+
+    # risk-coverage (§6). public은 L=1이라 제품 예산 R = 라벨 r이다. 점마다 val에서 다시 calibration한다
+    def decide_at(target: float) -> list[str]:
+        ok, ng = calibrate(val, val_scores, dec["normal_ng_rate"], target)
+        return [decide(p["anomaly_score"], ok, ng) for p in scored]
+
+    rc = risk_coverage(test, decide_at, dec["normal_ng_rate"])
     lat_cfg = cfg["latency"]
     # 제품 1개 = test 샘플 1개 (public track은 L=1). dummy라 anomaly 구간만 있다
     latency = summarize(
@@ -104,7 +119,7 @@ def main() -> None:
 
     start_experiment(cfg["tracking"]["experiment_name"])
     with mlflow.start_run(run_name=f"dummy-{ds['category']}") as run:
-        mlflow.set_tags({"purpose": "pipeline_check", "citable": "false"})
+        mlflow.set_tags({"purpose": "pipeline_check", "citable": "false"} | test_tags)
         mlflow.log_params(
             {
                 "git_commit": git_commit(),
@@ -126,7 +141,7 @@ def main() -> None:
                 "num_train": sum(r["split"] == "train" for r in rows),
                 "num_val": len(val),
                 "num_test": len(test),
-                "review_policy": metrics["review_policy"],
+                "review_policy": REVIEW_POLICY,
             }
             | environment(
                 lat_cfg["device"],
@@ -135,7 +150,11 @@ def main() -> None:
                 lat_cfg["precision"],
             )
         )
-        mlflow.log_metrics(flat_metrics(metrics | latency))
+        mlflow.log_metrics(
+            flat_scenario_metrics(metrics)
+            | flat_metrics(latency)
+            | ({"e1_aurc": rc["aurc"]} if rc["aurc"] is not None else {})
+        )
         mlflow.log_artifact(str(CONFIG_PATH), artifact_path="config")
         mlflow.log_artifact(str(REGISTRY_PATH), artifact_path="config")
         with tempfile.TemporaryDirectory() as tmp:
@@ -144,15 +163,17 @@ def main() -> None:
                 json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             (Path(tmp) / "latency.json").write_text(json.dumps(latency, indent=2), encoding="utf-8")
+            write_risk_coverage(Path(tmp), rc, dec["normal_review_rate"])
             mlflow.log_artifacts(tmp)
 
-    der, cder = metrics["defect_escape_rate"], metrics["critical_defect_escape_rate"]
+    e1 = metrics["E1"]
+    der, cder = e1["defect_escape_rate"], e1["critical_defect_escape_rate"]
     print(f"run_id : {run.info.run_id}  ({cfg['tracking']['experiment_name']})")
     print(f"thresh : ok={t_ok:.3f} ng={t_ng:.3f}  (val 정상 {n_val_normal}장 분위수)")
-    print(f"test   : {len(test)} samples  confusion {metrics['confusion']}")
+    print(f"test   : {len(test)} samples  confusion {e1['confusion']}")
     print(f"DER    : {der['k']} / {der['n']} escaped = {der['value']:.2%}  95% CI {der['ci95']}")
     print(f"CDER   : {'N/A (Recipe severity 없음)' if cder['value'] is None else cder}")
-    print(f"Review : {metrics['review_rate']['value']:.2%}   AUROC {metrics['auroc']:.3f}")
+    print(f"Review : {e1['review_rate']['value']:.2%}   AUROC {e1['auroc']:.3f}")
     print(
         f"Latency: P50 {latency['latency_p50']:.3f} / P95 {latency['latency_p95']:.3f} ms  {latency['latency_bands']}"
     )
